@@ -1,10 +1,16 @@
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 class VariableState{
+
+    Set<ProgramPoint.Instruction> definitionPoints = new HashSet<>();
     boolean isTop = false;
     Integer constantValue = null;
     String pointsTo = null;
     boolean isInt = false;
+    boolean isHeap=false;
+    String type = null;
 
     public boolean isInt() {
         return isInt;
@@ -12,6 +18,9 @@ class VariableState{
 
     public void setInt(boolean b) {
         isInt = b;
+        if(isInt){
+            type = "int";
+        }
     }
 
     void markAsTop() {
@@ -43,12 +52,26 @@ class VariableState{
     public boolean isTop() {
         return isTop;
     }
+
+    public String getType() {
+        return isInt ? "int" : pointsTo;
+    }
+
     public boolean isBottom(){
         if(this.isTop) return false;
         if(this.isInt() && !this.hasConstantValue()){
             return true;
         }
         return false;
+    }
+
+    public void addDefinitionPoint(ProgramPoint.Instruction instruction) {
+        definitionPoints.add(instruction);
+    }
+
+    // Getter for definitionPoints
+    public Set<ProgramPoint.Instruction> getDefinitionPoints() {
+        return definitionPoints;
     }
 
     public Integer getConstantValue() {
@@ -74,6 +97,7 @@ class VariableState{
         newState.setConstantValue(this.getConstantValue());
         newState.pointsTo = this.pointsTo;
         newState.isInt = this.isInt;
+        newState.definitionPoints = new HashSet<>(this.definitionPoints);
         return newState;
     }
 

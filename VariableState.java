@@ -6,34 +6,19 @@ class VariableState{
 
     Set<ProgramPoint.Instruction> definitionPoints = new HashSet<>();
     boolean isTop = false;
-    Integer constantValue = null;
     String pointsTo = null;
-    boolean isInt = false;
     boolean isHeap=false;
     String type = null;
-
-    public boolean isInt() {
-        return isInt;
-    }
-
-    public void setInt(boolean b) {
-        isInt = b;
-        if(isInt){
-            type = "int";
-        }
-    }
 
     void markAsTop() {
         if(this.pointsTo == null){
             this.isTop = true;
-            this.constantValue = null;
         }
     }
 
     void markAsBottom() {
         if(this.pointsTo == null){
             this.isTop = false;
-            this.constantValue = null;
         }
     }
 
@@ -42,24 +27,18 @@ class VariableState{
         isTop = false;
     }
 
-    void setConstantValue(Integer value) {
-        if(value != null) {
-            this.constantValue = value;
-            this.isTop = false;
-        }
-    }
 
     public boolean isTop() {
         return isTop;
     }
 
     public String getType() {
-        return isInt ? "int" : pointsTo;
+        return pointsTo == null ? "pointer" : type;
     }
 
     public boolean isBottom(){
         if(this.isTop) return false;
-        if(this.isInt() && !this.hasConstantValue()){
+        if(definitionPoints.size() == 0){
             return true;
         }
         return false;
@@ -74,14 +53,6 @@ class VariableState{
         return definitionPoints;
     }
 
-    public Integer getConstantValue() {
-        return constantValue;
-    }
-
-    public boolean hasConstantValue() {
-        return constantValue != null;
-    }
-
     public String getPointsTo() {
         return pointsTo;
     }
@@ -94,9 +65,8 @@ class VariableState{
     public VariableState clone() {
         VariableState newState = new VariableState();
         newState.isTop = this.isTop;
-        newState.setConstantValue(this.getConstantValue());
         newState.pointsTo = this.pointsTo;
-        newState.isInt = this.isInt;
+        newState.type = this.type;
         newState.definitionPoints = new HashSet<>(this.definitionPoints);
         return newState;
     }
@@ -107,15 +77,13 @@ class VariableState{
         if (obj == null || getClass() != obj.getClass()) return false;
         VariableState other = (VariableState) obj;
         return isTop == other.isTop &&
-                Objects.equals(constantValue, other.constantValue) &&
+                Objects.equals(definitionPoints, other.definitionPoints) &&
                 Objects.equals(pointsTo, other.pointsTo) &&
-                isInt == other.isInt;
+                type == other.type;
     }
 
     void weakUpdate(VariableState other) {
         if (this.isTop || other.isTop) {
-            this.markAsTop();
-        } else if (this.constantValue != null && other.constantValue != null && !Objects.equals(this.constantValue, other.constantValue)) {
             this.markAsTop();
         } else if (this.pointsTo != null && other.pointsTo != null && !Objects.equals(this.pointsTo, other.pointsTo)) {
             this.markAsTop();
@@ -128,17 +96,38 @@ class VariableState{
         //should change after worklist
         if (this.isTop || other.isTop) {
             result.markAsTop();
-        }else if (Objects.equals(this.constantValue, other.constantValue)) {
-
-        }else if(this.isBottom() && other.hasConstantValue()){
-            result.setConstantValue(other.getConstantValue());
-        }else if(this.hasConstantValue() && other.isBottom()){
-
         }else{
             result.markAsTop();
         }
 
         return result;
+    }
+
+    public void setDefinitionPoints(Set<ProgramPoint.Instruction> definitionPoints) {
+        this.definitionPoints = definitionPoints;
+    }
+
+    public void setTop(boolean top) {
+        isTop = top;
+    }
+
+    public boolean isHeap() {
+        return isHeap;
+    }
+
+    public void setHeap(boolean heap) {
+        isHeap = heap;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    @Override
+    public String toString() {
+        return "definitionPoints=" + definitionPoints +
+                ", pointsTo:'" + pointsTo + '\'' +
+                ", type:'" + type + '\'';
     }
 }
 

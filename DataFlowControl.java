@@ -42,23 +42,6 @@ public class DataFlowControl {
 
     public static void controlDominanceAnalysis(String filePath, String functionName) {
         parseLirFile(filePath, functionName);
-        for(String varName: addressTakenVariables){
-            VariableState thisVar = variableStates.get(varName);
-            if (thisVar.isInt()) {
-                VariableState newState = new VariableState();
-                newState.setInt(true);
-                newState.markAsTop();
-                addressTakenVarInit.put(varName, newState);
-            }
-        }
-        for (String blockName : blockVars.keySet()) {
-            if(blockName.equals("entry")){
-
-            }
-
-            Set<String> initDominators = new HashSet<>(basicBlocks.keySet());
-            dominators.put(blockName, initDominators);
-        }
 
         boolean changed = true;
         while (changed) {
@@ -135,14 +118,11 @@ public class DataFlowControl {
                         for (String varDeclaration : variables) {
                             String[] parts = varDeclaration.split(":");
                             String varName = parts[0].trim();
-                            // just get int type
+                            // Should get all types
                             String type = parts[1].trim();
                             VariableState newState = new VariableState();
-                            if (type.startsWith("&int")) {
-                                newState.setPointsTo(type.substring(1));
-                            } else if (type.equals("int")) {
-                                newState.setInt(true);
-                            } else if (type.startsWith("&")) {
+                            newState.setType(type);
+                            if (type.startsWith("&")) {
                                 newState.setPointsTo(type.substring(1));
                             }
                             newState.markAsTop();
@@ -189,14 +169,11 @@ public class DataFlowControl {
                         for (String varDeclaration : variables) {
                             String[] parts = varDeclaration.split(":");
                             String varName = parts[0].trim();
-                            // just get int type
+                            // Should get all types
                             String type = parts[1].trim();
                             VariableState newState = new VariableState();
-                            if (type.startsWith("&int")) {
-                                newState.setPointsTo(type.substring(1));
-                            }else if (type.equals("int")) {
-                                newState.setInt(true);
-                            }else if (type.startsWith("&")) {
+                            newState.setType(type);
+                            if (type.startsWith("&")) {
                                 newState.setPointsTo(type.substring(1));
                             }
                             allVars.add(varName);
@@ -209,7 +186,7 @@ public class DataFlowControl {
                         TreeMap<String, String> varsInBlock = blockVars.get(currentBlock);
                         for (int i = 0; i < parts.length; i++) {
                             String part = parts[i];
-                            if (variableStates.containsKey(part) && variableStates.get(part).isInt()) {
+                            if (variableStates.containsKey(part)) {
                                 varsInBlock.put(part, "");
                             }
                         }
@@ -228,9 +205,7 @@ public class DataFlowControl {
                             String part = parts[i];
                             if (variableStates.containsKey(part)) {
                                 VariableState thisVar = variableStates.get(part);
-                                if(thisVar.isInt()) {
-                                    varsInBlock.put(part, "");
-                                }
+                                varsInBlock.put(part, "");
                             }
                         }
                         if (currentBlock != null) {

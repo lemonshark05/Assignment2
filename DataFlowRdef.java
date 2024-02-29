@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 public class DataFlowRdef {
 
     static Map<String, VariableState> addressTakenVarInit = new TreeMap<>();
+//    Make addr_taken a map like Map<Type, Set<VarId>>.
     static Map<String, Set<String>> addressTakenVariables = new TreeMap<>();
 
     static Map<String, List<String>> typeDefinitions = new HashMap<>();
@@ -27,31 +28,49 @@ public class DataFlowRdef {
     static Map<String, VariableState> variableStates = new TreeMap<>();
     static Set<String> processedBlocks = new HashSet<>();
 
-    static Queue<ProgramPoint.Instruction> worklist = new PriorityQueue<>();
+    static TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
+    static TreeMap<String, TreeMap<String, VariableState>> postStates = new TreeMap<>();
+
+    static Queue<String> worklist = new PriorityQueue<>();
     static Map<ProgramPoint.Instruction, Set<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
 
     public static void reachingDefinitions(String filePath, String functionName) {
         parseLirFile(filePath, functionName);
+        for (String blockName : blockVars.keySet()) {
+            TreeMap<String, VariableState> initialStates = new TreeMap<>();
+            preStates.put(blockName, initialStates);
+        }
         //Initial State ⊥ for all program points
         initializeVarsDefinitions();
         //Fake Heap Variables
         //Add fake heap variables to addressTakenVariables based on the analysis of pointer types (PTRSτ)
 
-        ProgramPoint.Instruction entryBlock = getFirstInstructionOfBlock("entry");
-        worklist.add(entryBlock);
+        worklist.add("entry");
         processedBlocks.add("entry");
 
         while (!worklist.isEmpty()) {
-            ProgramPoint.Instruction currentInstruction = worklist.poll();
-            Set<ProgramPoint.Instruction> currentDefs = reachingDefinitions.get(currentInstruction);
-            Set<ProgramPoint.Instruction> updatedDefs = analyzeInstruction(currentInstruction, currentDefs);
+            String block = worklist.poll();
+            TreeMap<String, VariableState> preState = preStates.get(block);
+            TreeMap<String, VariableState> postState = analyzeBlock(block, preState, processedBlocks);
+            postStates.put(block, postState);
 
-            if (!currentDefs.equals(updatedDefs)) {
-                reachingDefinitions.put(currentInstruction, updatedDefs);
-                for (ProgramPoint.Instruction successor : currentInstruction.getSuccessors()) {
+            for (String successor : blockSuccessors.getOrDefault(block, new LinkedList<>())) {
+                if(successor.equals("bb6")){
+                    String a = successor;
+                }
+                TreeMap<String, VariableState> successorPreState = preStates.get(successor);
+                TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, postState);
+                if (!joinedState.equals(successorPreState) || postState.isEmpty()) {
+                    preStates.put(successor, joinedState);
                     if (!worklist.contains(successor)) {
+                        processedBlocks.add(successor);
                         worklist.add(successor);
+//                        System.out.println("Add to Worklist: " + worklist.toString());
                     }
+                }
+                if (!processedBlocks.contains(successor)) {
+                    processedBlocks.add(successor);
+                    worklist.add(successor);
                 }
             }
         }
@@ -67,15 +86,36 @@ public class DataFlowRdef {
         return null;
     }
 
-    void addSuccessorsToWorklist(ProgramPoint.Instruction instruction) {
-        List<ProgramPoint.Instruction> successors = instructionSuccessors.get(instruction);
-        if (successors != null) {
-            for (ProgramPoint.Instruction succ : successors) {
-                if (!worklist.contains(succ)) {
-                    worklist.add(succ);
-                }
+    private static TreeMap<String, VariableState> analyzeBlock(String block, TreeMap<String, VariableState> pState, Set<String> processedBlocks) {
+        TreeMap<String, VariableState> postState = new TreeMap<>();
+        for (Map.Entry<String, VariableState> entry : pState.entrySet()) {
+            VariableState newState = entry.getValue().clone();
+            postState.put(entry.getKey(), newState);
+        }
+        for (ProgramPoint.Instruction operation : basicBlocksInstructions.get(block)) {
+            analyzeInstruction(postState, processedBlocks ,operation);
+        }
+        return postState;
+    }
+
+    private static TreeMap<String, VariableState> joinMaps(TreeMap<String, VariableState> map1, TreeMap<String, VariableState> map2) {
+        TreeMap<String, VariableState> result = new TreeMap<>(map1);
+
+        for (Map.Entry<String, VariableState> entry : map2.entrySet()) {
+            String varName = entry.getKey();
+            VariableState stateFromMap2 = entry.getValue();
+            if (result.containsKey(varName)) {
+                VariableState stateFromMap1 = result.get(varName);
+                VariableState mergedState = stateFromMap1.join(stateFromMap2);
+                result.put(varName, mergedState);
+//                System.out.println("Merging state for variable '" + varName + "': " + stateFromMap1 + " ⊔ " + stateFromMap2 + " = " + mergedState);
+            } else {
+                result.put(varName, stateFromMap2);
+//                System.out.println("Adding new state for variable '" + varName + "': " + stateFromMap2);
             }
         }
+
+        return result;
     }
 
     private static void initializeVarsDefinitions(){
@@ -110,8 +150,7 @@ public class DataFlowRdef {
     }
 
 
-    private static Set<ProgramPoint.Instruction> analyzeInstruction(ProgramPoint.Instruction input, Set<ProgramPoint.Instruction> currentDefs) {
-        Set<ProgramPoint.Instruction> updatedDefs = new HashSet<>(currentDefs);
+    private static void analyzeInstruction(TreeMap<String, VariableState> postState, Set<String> processedBlocks, ProgramPoint.Instruction input) {
         String instruction = input.getInstructure();
         Pattern operationPattern = Pattern.compile("\\$(store|load|alloc|cmp|gep|copy|call_ext|addrof|arith|gfp|ret|call_dir|call_idr|jump|branch)");
         Matcher matcher = operationPattern.matcher(instruction);
@@ -127,8 +166,6 @@ public class DataFlowRdef {
                         int contant = Integer.parseInt(valueVar);
                         for(String addVar : addressTakenVarInit.keySet()){
                             VariableState newState = new VariableState();
-                            newState.setInt(true);
-                            newState.setConstantValue(contant);
                         }
                     }
                     VariableState variableState = variableStates.get(pointerVar);
@@ -167,6 +204,7 @@ public class DataFlowRdef {
                 case "addrof":
                     if (parts.length > 2) {
                         String pointedVar = parts[3];
+                        VariableState varState = variableStates.get(leftVar);
                         variableStates.get(leftVar).setPointsTo(pointedVar);
                     }
                     break;
@@ -177,147 +215,13 @@ public class DataFlowRdef {
                     String targetBlockJump = extractTargetBlock(instruction);
                     break;
                 case "branch":
-                    String condition = parts[1];
-                    String trueTarget = parts[2];
-                    String falseTarget = parts[3];
-                    List<String> newSuccessor = new ArrayList<>();
+
                     break;
                 case "ret":
                     break;
                 default:
                     break;
             }
-        }
-        return updatedDefs;
-    }
-
-    private static String getAbstractValue(String operand, Map<String, VariableState> postStates) {
-        VariableState state =new VariableState();
-        try {
-            int value = Integer.parseInt(operand);
-            return value+"";
-        } catch (NumberFormatException e) {
-            // Not an integer, so it should be a variable name
-            if(postStates.containsKey(operand)) {
-                state = postStates.get(operand);
-            }else{
-                state = variableStates.get(operand);
-            }
-            if(state.isTop){
-                return "T";
-            }else if(state.hasConstantValue()){
-                int stateValue = state.getConstantValue();
-                return stateValue+"";
-            }else if(state.isBottom()){
-                return "B";
-            }else if(state.pointsTo != null){
-                return "T";
-            }
-        }
-        return "";
-    }
-
-    private static void handleArith(String[] parts, String leftVar, Map<String, VariableState> postStates) {
-        if (parts.length < 5) return;
-
-        if(leftVar.equals("_t7")){
-            String a = leftVar;
-        }
-
-        VariableState leftState = postStates.get(leftVar);
-        String operation = parts[3];
-        String operand1 = parts[4];
-        String operand2 = parts[5];
-
-        String state1 = getAbstractValue(operand1, postStates);
-        String state2 = getAbstractValue(operand2, postStates);
-
-        if (state1.equals("B") || state2.equals("B")){
-            leftState.markAsBottom();
-            return;
-        }
-
-        if(operation.equals("mul")){
-            if(state1.equals("0") || state2.equals("0")){
-                leftState.setConstantValue(0);
-                return;
-            }
-        }
-
-        if(operation.equals("div")){
-            if(state2.equals("0")){
-                leftState.markAsBottom();
-                return;
-            }else if(state1.equals("0")){
-                leftState.setConstantValue(0);
-                return;
-            }
-        }
-
-        if (state1.equals("T") || state2.equals("T")) {
-            leftState.markAsTop();
-            return;
-        }
-
-        try {
-            Integer value1 = Integer.parseInt(state1);
-            Integer value2 = Integer.parseInt(state2);
-            if (value1 != null && value2 != null) {
-                Integer result = performArithmetic(operation, value1, value2);
-                if (result != null) {
-                    leftState.setConstantValue(result);
-                } else {
-                    leftState.markAsBottom();
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static void handleCmp(String[] parts, String leftVar, Map<String, VariableState> postStates) {
-        if (parts.length < 5) return;
-
-        if(leftVar.equals("_t14")){
-            String a = leftVar;
-        }
-
-        VariableState leftState = postStates.get(leftVar);
-        String operation = parts[3];
-        String operand1 = parts[4];
-        String operand2 = parts[5];
-
-        String state1 = getAbstractValue(operand1, postStates);
-        String state2 = getAbstractValue(operand2, postStates);
-
-        if (state1.equals(state2) && state1.equals("B")) {
-            leftState.markAsBottom();
-            return;
-        }else if(state1.equals(state2) && state1.equals("T")){
-            leftState.markAsTop();
-            return;
-        }else if(state1.length() == 0){
-            leftState.markAsBottom();
-            return;
-        }else if (state1.equals("B") || state2.equals("B")){
-            leftState.markAsBottom();
-            return;
-        }else if (state1.equals("T") || state2.equals("T")) {
-            leftState.markAsTop();
-            return;
-        }
-
-        try {
-            Integer value1 = Integer.parseInt(state1);
-            Integer value2 = Integer.parseInt(state2);
-            boolean result = performComparison(operation, value1, value2);
-            if(!result){
-                leftState.setConstantValue(0);
-            }else{
-                leftState.setConstantValue(1);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
@@ -356,11 +260,8 @@ public class DataFlowRdef {
                             // just get int type
                             String type = parts[1].trim();
                             VariableState newState = new VariableState();
-                            if (type.startsWith("&int")) {
-                                newState.setPointsTo(type.substring(1));
-                            } else if (type.equals("int")) {
-                                newState.setInt(true);
-                            } else if (type.startsWith("&")) {
+                            newState.setType(type);
+                            if (type.startsWith("&")) {
                                 newState.setPointsTo(type.substring(1));
                             }
                             newState.markAsTop();
@@ -376,8 +277,8 @@ public class DataFlowRdef {
                     isStruct = true;
                 } else if(isStruct && line.startsWith("}")) {
                     isStruct = false;
-                } else if (!isFunction && !isStruct && line.matches("^\\w+:int$")) {
-                    Pattern pattern = Pattern.compile("^(\\w+):int$");
+                } else if (!isFunction && !isStruct && line.matches("^\\w+:$")) {
+                    Pattern pattern = Pattern.compile("^(\\w+):$");
                     Matcher matcher = pattern.matcher(line);
                     if (matcher.find()) {
                         String varName = matcher.group(1);
@@ -411,12 +312,8 @@ public class DataFlowRdef {
                                 // just get int type
                                 String type = parts[1].trim();
                                 VariableState newState = new VariableState();
-                                newState.type = type;
-                                if (type.startsWith("&int")) {
-                                    newState.setPointsTo(type.substring(1));
-                                } else if (type.equals("int")) {
-                                    newState.setInt(true);
-                                } else if (type.startsWith("&")) {
+                                newState.setType(type);
+                                if (type.startsWith("&")) {
                                     newState.setPointsTo(type.substring(1));
                                 }
                                 allVars.add(varName);
@@ -431,7 +328,7 @@ public class DataFlowRdef {
                             TreeMap<String, String> varsInBlock = blockVars.get(currentBlock);
                             for (int i = 0; i < parts.length; i++) {
                                 String part = parts[i];
-                                if (variableStates.containsKey(part) && variableStates.get(part).isInt()) {
+                                if (variableStates.containsKey(part)) {
                                     varsInBlock.put(part, "");
                                 }
                             }
@@ -453,9 +350,7 @@ public class DataFlowRdef {
                                 String part = parts[i];
                                 if (variableStates.containsKey(part)) {
                                     VariableState thisVar = variableStates.get(part);
-                                    if (thisVar.isInt()) {
-                                        varsInBlock.put(part, "");
-                                    }
+//                                    thisVar.setType(type);
                                 }
                             }
                             if (currentBlock != null) {
@@ -492,39 +387,6 @@ public class DataFlowRdef {
         }
     }
 
-    private static Integer performArithmetic(String op, Integer val1, Integer val2) {
-        switch (op) {
-            case "add":
-                return val1 + val2;
-            case "sub":
-                return val1 - val2;
-            case "mul":
-                return val1 * val2;
-            case "div":
-                if (val2 == 0) return null;
-                return val1 / val2;
-            default:
-                return null;
-        }
-    }
-    private static Boolean performComparison(String op, Integer val1, Integer val2) {
-        switch (op) {
-            case "eq":
-                return Objects.equals(val1, val2);
-            case "neq":
-                return !Objects.equals(val1, val2);
-            case "lt":
-                return val1 < val2;
-            case "lte":
-                return val1 <= val2;
-            case "gt":
-                return val1 > val2;
-            case "gte":
-                return val1 >= val2;
-            default:
-                return null;
-        }
-    }
     private static String extractTargetBlock(String instruction) {
         Pattern pattern = Pattern.compile("\\$(branch|jump)\\s+(\\w+)");
         Matcher matcher = pattern.matcher(instruction);

@@ -8,23 +8,20 @@ import java.util.stream.Collectors;
 
 public class DataFlowRdef {
 
-    static Map<String, VariableState> addressTakenVarInit = new TreeMap<>();
 //    Make addr_taken a map like Map<Type, Set<VarId>>.
     static Map<String, Set<String>> addressTakenVariables = new TreeMap<>();
 
     static Map<String, List<String>> typeDefinitions = new HashMap<>();
     static Set<String> allVars = new HashSet<>();
 
-    static Set<String> globalIntVars = new HashSet<>();
-    static Set<String> localIntParams = new HashSet<>();
-
-    static Map<ProgramPoint.Instruction, List<ProgramPoint.Instruction>> instructionSuccessors = new HashMap<>();
+    static Set<String> globalVars = new HashSet<>();
+    static Set<String> localParams = new HashSet<>();
 
     static Map<String, List<ProgramPoint.Instruction>> basicBlocksInstructions = new HashMap<>();
 
     static Map<String, List<String>> blockSuccessors = new HashMap<>();
 
-    static Map<String, TreeMap<String, String>> blockVars = new HashMap<>();
+    static Map<String, Set<String>> blockVars = new HashMap<>();
     static Map<String, VariableState> variableStates = new TreeMap<>();
     static Set<String> processedBlocks = new HashSet<>();
 
@@ -32,6 +29,8 @@ public class DataFlowRdef {
     static TreeMap<String, TreeMap<String, VariableState>> postStates = new TreeMap<>();
 
     static Queue<String> worklist = new PriorityQueue<>();
+    static Map<String, Set<String>> reachableTypes = new HashMap<>();
+    // Soln for all instructions
     static Map<ProgramPoint.Instruction, Set<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
 
     public static void reachingDefinitions(String filePath, String functionName) {
@@ -44,6 +43,26 @@ public class DataFlowRdef {
         initializeVarsDefinitions();
         //Fake Heap Variables
         //Add fake heap variables to addressTakenVariables based on the analysis of pointer types (PTRSτ)
+        for (String blockName : blockVars.keySet()) {
+            TreeMap<String, VariableState> initialStates = new TreeMap<>();
+            Set<String> varsInBlock = blockVars.get(blockName);
+            for (String varName : varsInBlock) {
+                VariableState newState = variableStates.get(varName).clone();
+                initialStates.put(varName, newState);
+            }
+
+            for(String globalVar : globalVars){
+                VariableState newState = new VariableState();
+                initialStates.put(globalVar, newState);
+            }
+            preStates.put(blockName, initialStates);
+        }
+
+        TreeMap<String, VariableState> entryStates = preStates.get("entry");
+        for (String param : localParams) {
+            VariableState newState = variableStates.get(param).clone();
+            entryStates.put(param, newState);
+        }
 
         worklist.add("entry");
         processedBlocks.add("entry");
@@ -55,9 +74,6 @@ public class DataFlowRdef {
             postStates.put(block, postState);
 
             for (String successor : blockSuccessors.getOrDefault(block, new LinkedList<>())) {
-                if(successor.equals("bb6")){
-                    String a = successor;
-                }
                 TreeMap<String, VariableState> successorPreState = preStates.get(successor);
                 TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, postState);
                 if (!joinedState.equals(successorPreState) || postState.isEmpty()) {
@@ -75,15 +91,6 @@ public class DataFlowRdef {
             }
         }
         printAnalysisResults();
-    }
-
-    public static ProgramPoint.Instruction getFirstInstructionOfBlock(String blockName) {
-        List<ProgramPoint.Instruction> instructions = basicBlocksInstructions.get(blockName);
-
-        if (instructions != null && !instructions.isEmpty()) {
-            return instructions.get(0);
-        }
-        return null;
     }
 
     private static TreeMap<String, VariableState> analyzeBlock(String block, TreeMap<String, VariableState> pState, Set<String> processedBlocks) {
@@ -119,12 +126,12 @@ public class DataFlowRdef {
     }
 
     private static void initializeVarsDefinitions(){
+        //alloc fake heap vars
         Set<String> pointerTypes = new HashSet<>();
 
         for (String ptrType : pointerTypes) {
             Set<String> reachableTypes = calculateReachableTypes(ptrType);
             for (String type : reachableTypes) {
-
                 String fakeVarName = "fake_" + type.replace("&", "").replace(" ", "_");
                 addressTakenVariables.computeIfAbsent(type, k -> new HashSet<>()).add(fakeVarName);
             }
@@ -155,18 +162,20 @@ public class DataFlowRdef {
         Pattern operationPattern = Pattern.compile("\\$(store|load|alloc|cmp|gep|copy|call_ext|addrof|arith|gfp|ret|call_dir|call_idr|jump|branch)");
         Matcher matcher = operationPattern.matcher(instruction);
         String[] parts = instruction.split(" ");
-        String leftVar = parts[0];
+        String defVar = parts[0];
+        VariableState defState = postState.get(defVar);
         if (matcher.find()) {
             String opera = matcher.group(1);
             switch (opera) {
                 case "store":
                     String pointerVar = parts[1];
                     String valueVar = parts[2];
+                    if(defState != null){
+                        defState.addDefinitionPoint(input);
+                    }
                     if (valueVar.matches("\\d+")) {
-                        int contant = Integer.parseInt(valueVar);
-                        for(String addVar : addressTakenVarInit.keySet()){
-                            VariableState newState = new VariableState();
-                        }
+
+
                     }
                     VariableState variableState = variableStates.get(pointerVar);
 //                    if (variableState.pointsTo != null) {
@@ -191,8 +200,23 @@ public class DataFlowRdef {
                 case "gep":
                     break;
                 case "copy":
+                    if(defState != null){
+                        defState.addDefinitionPoint(input);
+                    }
                     if (parts.length > 3) {
                         String copiedVar = parts[3];
+                        VariableState copiedState = postState.get(copiedVar);
+                        if (copiedState != null) {
+                            defState.addAllDefinitionPoint(copiedState.definitionPoints);
+                            Set<ProgramPoint.Instruction> set = reachingDefinitions.get(input);
+                            set.addAll(defState.definitionPoints);
+                        } else {
+                            try {
+                                int value = Integer.parseInt(copiedVar);
+                            } catch (NumberFormatException e) {
+
+                            }
+                        }
                     }
                     break;
                 case "call_ext":
@@ -203,9 +227,7 @@ public class DataFlowRdef {
                     break;
                 case "addrof":
                     if (parts.length > 2) {
-                        String pointedVar = parts[3];
-                        VariableState varState = variableStates.get(leftVar);
-                        variableStates.get(leftVar).setPointsTo(pointedVar);
+                        defState.addDefinitionPoint(input);
                     }
                     break;
                 case "gfp":
@@ -230,6 +252,7 @@ public class DataFlowRdef {
             String currentBlock = null;
             boolean isFunction = false;
             boolean isStruct = false;
+            String structName = "";
             int index = 0;
 
             String line;
@@ -264,8 +287,7 @@ public class DataFlowRdef {
                             if (type.startsWith("&")) {
                                 newState.setPointsTo(type.substring(1));
                             }
-                            newState.markAsTop();
-                            localIntParams.add(varName);
+                            localParams.add(varName);
                             allVars.add(varName);
                             variableStates.put(varName, newState);
                         }
@@ -275,20 +297,36 @@ public class DataFlowRdef {
                     currentBlock = null;
                 } else if(line.startsWith("struct ")){
                     isStruct = true;
+                    Pattern pattern = Pattern.compile("struct\\s+(\\w+)\\s*\\{");
+                    Matcher matcher = pattern.matcher(line);
+                    if (matcher.find()) {
+                        structName = matcher.group(1);
+                    }
+                    if (!reachableTypes.containsKey(structName)) {
+                        reachableTypes.put(structName, new HashSet<>());
+                    }
                 } else if(isStruct && line.startsWith("}")) {
                     isStruct = false;
-                } else if (!isFunction && !isStruct && line.matches("^\\w+:$")) {
+                } else if(isStruct){
+                    Pattern fieldPattern = Pattern.compile("\\s*(\\w+):\\s*(.+);");
+                    Matcher fieldMatcher = fieldPattern.matcher(line);
+                    if (fieldMatcher.find()) {
+                        String fieldName = fieldMatcher.group(1);
+                        String fieldType = fieldMatcher.group(2);
+                        reachableTypes.computeIfAbsent(structName, k -> new HashSet<>()).add(fieldType);
+                    }
+                }else if (!isFunction && !isStruct && line.matches("^\\w+:$")) {
                     Pattern pattern = Pattern.compile("^(\\w+):$");
                     Matcher matcher = pattern.matcher(line);
                     if (matcher.find()) {
                         String varName = matcher.group(1);
-                        globalIntVars.add(varName);
+                        globalVars.add(varName);
                         allVars.add(varName);
                     }
                 } else if (isFunction) {
                     if (line.matches("^\\w+:")) {
                         currentBlock = line.replace(":", "");
-                        blockVars.putIfAbsent(currentBlock, new TreeMap<>());
+                        blockVars.putIfAbsent(currentBlock, new HashSet<>());
                         basicBlocksInstructions.putIfAbsent(currentBlock, new ArrayList<>());
                     } else {
                         if (line.startsWith("let ")) {
@@ -325,32 +363,32 @@ public class DataFlowRdef {
                             basicBlocksInstructions.get(currentBlock).add(instruction);
                             reachingDefinitions.put(instruction, new HashSet<>());
                             String[] parts = line.split(" ");
-                            TreeMap<String, String> varsInBlock = blockVars.get(currentBlock);
+                            Set<String> varsInBlock = blockVars.get(currentBlock);
                             for (int i = 0; i < parts.length; i++) {
                                 String part = parts[i];
                                 if (variableStates.containsKey(part)) {
-                                    varsInBlock.put(part, "");
+                                    varsInBlock.add(part);
                                 }
                             }
                             if (parts.length > 3) {
                                 String address = parts[0];
                                 String addressTakenVar = parts[3];
-                                VariableState varState = variableStates.get(addressTakenVar);
+                                VariableState varState = variableStates.get(address);
                                 varState.setPointsTo(addressTakenVar);
                                 if (variableStates.containsKey(addressTakenVar)) {
-                                    String type = varState.getType();
+                                    String type = variableStates.get(addressTakenVar).getType();
                                     addressTakenVariables.computeIfAbsent(type, k -> new HashSet<>()).add(addressTakenVar);
                                 }
                             }
                         } else {
                             ProgramPoint.Instruction instruction;
-                            TreeMap<String, String> varsInBlock = blockVars.get(currentBlock);
+                            Set<String> varsInBlock = blockVars.get(currentBlock);
                             String[] parts = line.split(" ");
                             for (int i = 0; i < parts.length; i++) {
                                 String part = parts[i];
                                 if (variableStates.containsKey(part)) {
                                     VariableState thisVar = variableStates.get(part);
-//                                    thisVar.setType(type);
+                                    varsInBlock.add(part);
                                 }
                             }
                             if (currentBlock != null) {
@@ -395,21 +433,6 @@ public class DataFlowRdef {
         }
         return "";
     }
-
-    Comparator<ProgramPoint.Instruction> blockNameComparator = new Comparator<ProgramPoint.Instruction>() {
-        @Override
-        public int compare(ProgramPoint.Instruction o1, ProgramPoint.Instruction o2) {
-            int result = o1.getBb().compareTo(o2.getBb());
-            if (result == 0 && o1 instanceof ProgramPoint.NonTermInstruction && o2 instanceof ProgramPoint.NonTermInstruction) {
-                return Integer.compare(((ProgramPoint.NonTermInstruction) o1).getIndex(), ((ProgramPoint.NonTermInstruction) o2).getIndex());
-            } else if (o1 instanceof ProgramPoint.NonTermInstruction && o2 instanceof ProgramPoint.Terminal) {
-                return -1;
-            } else if (o1 instanceof ProgramPoint.Terminal && o2 instanceof ProgramPoint.NonTermInstruction) {
-                return 1;
-            }
-            return result;
-        }
-    };
 
     private static void printAnalysisResults() {
         // Sort the basic block names alphabetically

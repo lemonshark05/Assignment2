@@ -33,7 +33,7 @@ class VariableState{
     }
 
     public String getType() {
-        return pointsTo == null ? "pointer" : type;
+        return this.type;
     }
 
     public boolean isBottom(){
@@ -45,7 +45,13 @@ class VariableState{
     }
 
     public void addDefinitionPoint(ProgramPoint.Instruction instruction) {
-        definitionPoints.add(instruction);
+        this.definitionPoints.add(instruction);
+    }
+
+    public void addAllDefinitionPoint(Set<ProgramPoint.Instruction> instructions) {
+        for (ProgramPoint.Instruction instruction : instructions) {
+            this.definitionPoints.add(instruction);
+        }
     }
 
     // Getter for definitionPoints
@@ -101,14 +107,6 @@ class VariableState{
         }
 
         return result;
-    }
-
-    public void setDefinitionPoints(Set<ProgramPoint.Instruction> definitionPoints) {
-        this.definitionPoints = definitionPoints;
-    }
-
-    public void setTop(boolean top) {
-        isTop = top;
     }
 
     public boolean isHeap() {

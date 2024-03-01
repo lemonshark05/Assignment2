@@ -28,14 +28,14 @@ public class DataFlowRdef {
     static Set<String> processedBlocks = new HashSet<>();
 
     static TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
-    static TreeMap<String, TreeMap<String, VariableState>> postStates = new TreeMap<>();
+//    static TreeMap<String, TreeMap<String, VariableState>> postStates = new TreeMap<>();
 
     static Queue<String> worklist = new PriorityQueue<>();
     static Map<String, Set<String>> reachableTypes = new HashMap<>();
     // Soln for all instructions
-    static Map<ProgramPoint.Instruction, Set<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
+    static Map<String, Set<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
 
-    public static void reachingDefinitions(String filePath, String functionName) {
+    public static void reachingDefinitionAnalysis(String filePath, String functionName) {
         parseLirFile(filePath, functionName);
         for (String blockName : blockVars.keySet()) {
             TreeMap<String, VariableState> initialStates = new TreeMap<>();
@@ -73,14 +73,13 @@ public class DataFlowRdef {
 
         while (!worklist.isEmpty()) {
             String block = worklist.poll();
-            TreeMap<String, VariableState> preState = preStates.get(block);
-            TreeMap<String, VariableState> postState = analyzeBlock(block, preState, processedBlocks);
-            postStates.put(block, postState);
+            TreeMap<String, VariableState> currentState = preStates.get(block);
+            currentState = analyzeBlock(block, currentState, processedBlocks);
 
             for (String successor : blockSuccessors.getOrDefault(block, new LinkedList<>())) {
                 TreeMap<String, VariableState> successorPreState = preStates.get(successor);
-                TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, postState);
-                if (!joinedState.equals(successorPreState) || postState.isEmpty()) {
+                TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, currentState);
+                if (!joinedState.equals(successorPreState) || currentState.isEmpty()) {
                     preStates.put(successor, joinedState);
                     if (!worklist.contains(successor)) {
                         processedBlocks.add(successor);
@@ -97,16 +96,11 @@ public class DataFlowRdef {
         printAnalysisResults();
     }
 
-    private static TreeMap<String, VariableState> analyzeBlock(String block, TreeMap<String, VariableState> pState, Set<String> processedBlocks) {
-        TreeMap<String, VariableState> postState = new TreeMap<>();
-        for (Map.Entry<String, VariableState> entry : pState.entrySet()) {
-            VariableState newState = entry.getValue().clone();
-            postState.put(entry.getKey(), newState);
-        }
+    private static TreeMap<String, VariableState> analyzeBlock(String block, TreeMap<String, VariableState> preState, Set<String> processedBlocks) {
         for (ProgramPoint.Instruction operation : basicBlocksInstructions.get(block)) {
-            analyzeInstruction(postState, processedBlocks ,operation);
+            analyzeInstruction(preState, processedBlocks ,operation);
         }
-        return postState;
+        return preState;
     }
 
     private static TreeMap<String, VariableState> joinMaps(TreeMap<String, VariableState> map1, TreeMap<String, VariableState> map2) {
@@ -182,10 +176,10 @@ public class DataFlowRdef {
                     VariableState valueState = postState.get(valueVar);
                     //∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
                     if (useState!= null) {
-                        reachingDefinitions.get(input).addAll(useState.getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(useState.getDefinitionPoints());
                     }
                     if (valueState!= null) {
-                        reachingDefinitions.get(input).addAll(valueState.getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(valueState.getDefinitionPoints());
                     }
 
                     //  ∀x∈DEF,σ[x] ← σ[x] ∪ {pp}
@@ -200,11 +194,11 @@ public class DataFlowRdef {
                     String loadVar = parts[3];
                     VariableState loadState = postState.get(loadVar);
                     if(loadState != null) {
-                        reachingDefinitions.get(input).addAll(loadState.definitionPoints);
+                        reachingDefinitions.get(input.toString()).addAll(loadState.definitionPoints);
                     }
                     //∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
                     for(String addTaken : addressTakenVariables.get(defState.getType())){
-                        reachingDefinitions.get(input).addAll(postState.get(addTaken).getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(postState.get(addTaken).getDefinitionPoints());
                     }
                     // σ[x] ← {pp}
                     if(defState != null){
@@ -221,7 +215,7 @@ public class DataFlowRdef {
 
                     //soln[pp] ← soln[pp] ∪ σ[v]
                     if (usedState0 != null) {
-                        reachingDefinitions.get(input).addAll(usedState0.getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(usedState0.getDefinitionPoints());
                     }
                     //σ[x] ← {pp}
                     defState.setDefinitionPoint(input);
@@ -233,10 +227,10 @@ public class DataFlowRdef {
                     VariableState usedState4 = postState.get(usedVar4);
                     //soln[pp] ← soln[pp] ∪ σ[v]
                     if (usedState3 != null) {
-                        reachingDefinitions.get(input).addAll(usedState3.getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(usedState3.getDefinitionPoints());
                     }
                     if (usedState4 != null) {
-                        reachingDefinitions.get(input).addAll(usedState4.getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(usedState4.getDefinitionPoints());
                     }
                     //σ[x] ← {pp}
                     defState.setDefinitionPoint(input);
@@ -249,10 +243,10 @@ public class DataFlowRdef {
                     VariableState usedState2 = postState.get(usedVar2);
                     //soln[pp] ← soln[pp] ∪ σ[v]
                     if (usedState1 != null) {
-                        reachingDefinitions.get(input).addAll(usedState1.getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(usedState1.getDefinitionPoints());
                     }
                     if (usedState2 != null) {
-                        reachingDefinitions.get(input).addAll(usedState2.getDefinitionPoints());
+                        reachingDefinitions.get(input.toString()).addAll(usedState2.getDefinitionPoints());
                     }
                     //σ[x] ← {pp}
                     defState.setDefinitionPoint(input);
@@ -267,23 +261,12 @@ public class DataFlowRdef {
                         VariableState usedState = postState.get(usedVar);
                         if(usedState != null) {
                             //soln[pp] ← soln[pp] ∪ σ[v]
-                            Set<ProgramPoint.Instruction> set = reachingDefinitions.get(input);
+                            Set<ProgramPoint.Instruction> set = reachingDefinitions.get(input.toString());
                             set.addAll(usedState.definitionPoints);
                         }
                         if(defState != null){
                             defState.setDefinitionPoint(input);
                             postState.put(defVar, defState);
-                        }
-                        if (usedState != null) {
-                            //including type
-                            defState = usedState.copyNew(defState);
-                            postState.put(defVar, defState);
-                        } else {
-                            try {
-                                int value = Integer.parseInt(usedVar);
-                            } catch (NumberFormatException e) {
-
-                            }
                         }
                     }
                     break;
@@ -295,7 +278,7 @@ public class DataFlowRdef {
                     break;
                 case "addrof":
                     if (parts.length > 2) {
-                        Set<ProgramPoint.Instruction> set3 = reachingDefinitions.get(input);
+                        Set<ProgramPoint.Instruction> set3 = reachingDefinitions.get(input.toString());
                         set3.addAll(defState.definitionPoints);
                         defState.setDefinitionPoint(input);
                     }
@@ -307,6 +290,10 @@ public class DataFlowRdef {
                     String targetBlockJump = extractTargetBlock(instruction);
                     break;
                 case "branch":
+                    String usedVar5 = parts[1];
+                    VariableState usedState5 = postState.get(usedVar5);
+                    //∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
+                    reachingDefinitions.get(input.toString()).addAll(usedState5.getDefinitionPoints());
                     break;
                 case "ret":
                     if(parts.length>0) {
@@ -314,7 +301,7 @@ public class DataFlowRdef {
                         // ret could return integer
                         VariableState retState = postState.get(retVar);
                         if(retState != null) {
-                            reachingDefinitions.get(input).addAll(retState.getDefinitionPoints());
+                            reachingDefinitions.get(input.toString()).addAll(retState.getDefinitionPoints());
                         }
                     }
                     break;
@@ -410,9 +397,11 @@ public class DataFlowRdef {
                     }
                 } else if (isFunction) {
                     if (line.matches("^\\w+:")) {
+                        //There is a new block
                         currentBlock = line.replace(":", "");
                         blockVars.putIfAbsent(currentBlock, new HashSet<>());
                         basicBlocksInstructions.putIfAbsent(currentBlock, new ArrayList<>());
+                        index = 0;
                     } else {
                         if (line.startsWith("let ")) {
                             String variablesPart = line.substring("let ".length());
@@ -445,7 +434,7 @@ public class DataFlowRdef {
                             ProgramPoint.NonTermInstruction instruction = new ProgramPoint.NonTermInstruction(currentBlock, index, line);
                             index++;
                             basicBlocksInstructions.get(currentBlock).add(instruction);
-                            reachingDefinitions.put(instruction, new HashSet<>());
+                            reachingDefinitions.put(instruction.toString(), new HashSet<>());
                             String[] parts = line.split(" ");
                             Set<String> varsInBlock = blockVars.get(currentBlock);
                             for (int i = 0; i < parts.length; i++) {
@@ -505,7 +494,7 @@ public class DataFlowRdef {
                                     index++;
                                 }
                                 basicBlocksInstructions.get(currentBlock).add(instruction);
-                                reachingDefinitions.put(instruction, new HashSet<>());
+                                reachingDefinitions.put(instruction.toString(), new HashSet<>());
                             } else {
 
                             }
@@ -529,8 +518,8 @@ public class DataFlowRdef {
 
     private static void printAnalysisResults() {
         // Sort the basic block names alphabetically
-        for (Map.Entry<ProgramPoint.Instruction, Set<ProgramPoint.Instruction>> entry : reachingDefinitions.entrySet()) {
-            ProgramPoint.Instruction instruction = entry.getKey();
+        for (Map.Entry<String, Set<ProgramPoint.Instruction>> entry : reachingDefinitions.entrySet()) {
+            String instruction = entry.getKey();
             Set<ProgramPoint.Instruction> definitions = entry.getValue();
 
             // Skip this entry if definitions set is empty
@@ -562,6 +551,6 @@ public class DataFlowRdef {
         if(args.length > 2 && args[2].length()!=0){
             functionName = args[2];
         }
-        reachingDefinitions(lirFilePath, functionName);
+        reachingDefinitionAnalysis(lirFilePath, functionName);
     }
 }

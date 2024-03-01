@@ -12,7 +12,7 @@ public class DataFlowRdef {
     static Map<String, Set<String>> addressTakenVariables = new TreeMap<>();
 
     static Map<String, List<String>> typeDefinitions = new HashMap<>();
-    static Set<String> allVars = new HashSet<>();
+    static Set<String> allAddressTakenVars = new HashSet<>();
 
     static Set<String> globalVars = new HashSet<>();
     static Set<String> localParams = new HashSet<>();
@@ -23,6 +23,8 @@ public class DataFlowRdef {
 
     static Map<String, Set<String>> blockVars = new HashMap<>();
     static Map<String, VariableState> variableStates = new TreeMap<>();
+
+    static Map<String, VariableState> fakeHeapStates = new TreeMap<>();
     static Set<String> processedBlocks = new HashSet<>();
 
     static TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
@@ -39,10 +41,7 @@ public class DataFlowRdef {
             TreeMap<String, VariableState> initialStates = new TreeMap<>();
             preStates.put(blockName, initialStates);
         }
-        //Initial State ⊥ for all program points
-        initializeVarsDefinitions();
-        //Fake Heap Variables
-        //Add fake heap variables to addressTakenVariables based on the analysis of pointer types (PTRSτ)
+
         for (String blockName : blockVars.keySet()) {
             TreeMap<String, VariableState> initialStates = new TreeMap<>();
             Set<String> varsInBlock = blockVars.get(blockName);
@@ -63,6 +62,11 @@ public class DataFlowRdef {
             VariableState newState = variableStates.get(param).clone();
             entryStates.put(param, newState);
         }
+
+        //Initial State ⊥ for all program points
+        initializeVarsDefinitions();
+        //Fake Heap Variables
+        //Add fake heap variables to addressTakenVariables based on the analysis of pointer types (PTRSτ)
 
         worklist.add("entry");
         processedBlocks.add("entry");
@@ -126,15 +130,15 @@ public class DataFlowRdef {
     }
 
     private static void initializeVarsDefinitions(){
+        TreeMap<String, VariableState> entryStates = preStates.get("entry");
         //alloc fake heap vars
-        Set<String> pointerTypes = new HashSet<>();
-
-        for (String ptrType : pointerTypes) {
-            Set<String> reachableTypes = calculateReachableTypes(ptrType);
-            for (String type : reachableTypes) {
-                String fakeVarName = "fake_" + type.replace("&", "").replace(" ", "_");
-                addressTakenVariables.computeIfAbsent(type, k -> new HashSet<>()).add(fakeVarName);
-            }
+        for (Map.Entry<String, VariableState> entry : fakeHeapStates.entrySet()) {
+            String fakeVarName = entry.getKey();
+            String type = entry.getValue().getType();
+            Set<String> reachableTypes = calculateReachableTypes(fakeVarName);
+            entryStates.put(fakeVarName, entry.getValue());
+            allAddressTakenVars.add(fakeVarName);
+            addressTakenVariables.computeIfAbsent(type, k -> new HashSet<>()).add(fakeVarName);
         }
     }
 
@@ -168,51 +172,115 @@ public class DataFlowRdef {
             String opera = matcher.group(1);
             switch (opera) {
                 case "store":
-                    String pointerVar = parts[1];
+                    String useVar = parts[1];
                     String valueVar = parts[2];
-                    if(defState != null){
-                        defState.addDefinitionPoint(input);
+                    String typeOfvalueVar = "int";
+                    if(postState.get(valueVar) != null){
+                        typeOfvalueVar = postState.get(valueVar).getType();
                     }
-                    if (valueVar.matches("\\d+")) {
-
-
+                    VariableState useState = postState.get(useVar);
+                    VariableState valueState = postState.get(valueVar);
+                    //∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
+                    if (useState!= null) {
+                        reachingDefinitions.get(input).addAll(useState.getDefinitionPoints());
                     }
-                    VariableState variableState = variableStates.get(pointerVar);
-//                    if (variableState.pointsTo != null) {
-//                        Set<ProgramPoint.Instruction> defsOfValue = findDefinitionsOf(valueVar, currentDefs);
-//                        for (String fakeVar : findFakeVariablesForPointerType(pointerVar)) {
-//                            updatedDefs.addAll(defsOfValue);
-//                        }
-//                    }
+                    if (valueState!= null) {
+                        reachingDefinitions.get(input).addAll(valueState.getDefinitionPoints());
+                    }
+
+                    //  ∀x∈DEF,σ[x] ← σ[x] ∪ {pp}
+                    for(String addTaken : addressTakenVariables.get(typeOfvalueVar)){
+                        if(postState.containsKey(addTaken)) {
+                            postState.get(addTaken).addDefinitionPoint(input);
+                        }
+                    }
                     break;
                 case "load":
-
+//                    x marks all address-taken variables as potentially depending on this instruction.
+                    String loadVar = parts[3];
+                    VariableState loadState = postState.get(loadVar);
+                    if(loadState != null) {
+                        reachingDefinitions.get(input).addAll(loadState.definitionPoints);
+                    }
+                    //∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
+                    for(String addTaken : addressTakenVariables.get(defState.getType())){
+                        reachingDefinitions.get(input).addAll(postState.get(addTaken).getDefinitionPoints());
+                    }
+                    // σ[x] ← {pp}
+                    if(defState != null){
+                        defState.setDefinitionPoint(input);
+                    }
                     break;
                 case "alloc":
+                    String usedVar0 = parts[3];
+                    VariableState usedState0 = postState.get(usedVar0);
+                    if(usedState0 == null) {
+                        usedVar0 = "fake_int";
+                        usedState0 = postState.get(usedVar0);
+                    }
 
+                    //soln[pp] ← soln[pp] ∪ σ[v]
+                    if (usedState0 != null) {
+                        reachingDefinitions.get(input).addAll(usedState0.getDefinitionPoints());
+                    }
+                    //σ[x] ← {pp}
+                    defState.setDefinitionPoint(input);
                     break;
                 case "cmp":
+                    String usedVar3 = parts[4];
+                    String usedVar4 = parts[5];
+                    VariableState usedState3 = postState.get(usedVar3);
+                    VariableState usedState4 = postState.get(usedVar4);
+                    //soln[pp] ← soln[pp] ∪ σ[v]
+                    if (usedState3 != null) {
+                        reachingDefinitions.get(input).addAll(usedState3.getDefinitionPoints());
+                    }
+                    if (usedState4 != null) {
+                        reachingDefinitions.get(input).addAll(usedState4.getDefinitionPoints());
+                    }
+                    //σ[x] ← {pp}
+                    defState.setDefinitionPoint(input);
 //                    handleCmp(parts, leftVar, postState);
                     break;
                 case "arith":
+                    String usedVar1 = parts[4];
+                    String usedVar2 = parts[5];
+                    VariableState usedState1 = postState.get(usedVar1);
+                    VariableState usedState2 = postState.get(usedVar2);
+                    //soln[pp] ← soln[pp] ∪ σ[v]
+                    if (usedState1 != null) {
+                        reachingDefinitions.get(input).addAll(usedState1.getDefinitionPoints());
+                    }
+                    if (usedState2 != null) {
+                        reachingDefinitions.get(input).addAll(usedState2.getDefinitionPoints());
+                    }
+                    //σ[x] ← {pp}
+                    defState.setDefinitionPoint(input);
 //                    handleArith(parts, leftVar, postState);
                     break;
                 case "gep":
+//                    String usedVar = parts[0];
                     break;
                 case "copy":
-                    if(defState != null){
-                        defState.addDefinitionPoint(input);
-                    }
                     if (parts.length > 3) {
-                        String copiedVar = parts[3];
-                        VariableState copiedState = postState.get(copiedVar);
-                        if (copiedState != null) {
-                            defState.addAllDefinitionPoint(copiedState.definitionPoints);
+                        String usedVar = parts[3];
+                        VariableState usedState = postState.get(usedVar);
+                        if(usedState != null) {
+                            //soln[pp] ← soln[pp] ∪ σ[v]
                             Set<ProgramPoint.Instruction> set = reachingDefinitions.get(input);
-                            set.addAll(defState.definitionPoints);
+                            set.addAll(usedState.definitionPoints);
+                        }
+                        if(defState != null){
+                            defState.setDefinitionPoint(input);
+                            postState.put(defVar, defState);
+                        }
+                        if (usedState != null) {
+                            //including type
+                            defState = usedState.copyNew(defState);
+                            postState.put(defVar, defState);
                         } else {
                             try {
-                                int value = Integer.parseInt(copiedVar);
+                                int value = Integer.parseInt(usedVar);
                             } catch (NumberFormatException e) {
 
                             }
@@ -227,7 +295,9 @@ public class DataFlowRdef {
                     break;
                 case "addrof":
                     if (parts.length > 2) {
-                        defState.addDefinitionPoint(input);
+                        Set<ProgramPoint.Instruction> set3 = reachingDefinitions.get(input);
+                        set3.addAll(defState.definitionPoints);
+                        defState.setDefinitionPoint(input);
                     }
                     break;
                 case "gfp":
@@ -237,14 +307,31 @@ public class DataFlowRdef {
                     String targetBlockJump = extractTargetBlock(instruction);
                     break;
                 case "branch":
-
                     break;
                 case "ret":
+                    if(parts.length>0) {
+                        String retVar = parts[1];
+                        // ret could return integer
+                        VariableState retState = postState.get(retVar);
+                        if(retState != null) {
+                            reachingDefinitions.get(input).addAll(retState.getDefinitionPoints());
+                        }
+                    }
                     break;
                 default:
                     break;
             }
         }
+    }
+
+    private static String getAddressTaken(VariableState pointerState, TreeMap<String, VariableState> postState){
+        VariableState result = pointerState.clone();
+        String re = "";
+        while(result.pointsTo!=null){
+            re = result.pointsTo;
+            result = postState.get(result.pointsTo);
+        }
+        return re;
     }
 
     private static void parseLirFile(String filePath, String functionName) {
@@ -288,7 +375,6 @@ public class DataFlowRdef {
                                 newState.setPointsTo(type.substring(1));
                             }
                             localParams.add(varName);
-                            allVars.add(varName);
                             variableStates.put(varName, newState);
                         }
                     }
@@ -321,7 +407,6 @@ public class DataFlowRdef {
                     if (matcher.find()) {
                         String varName = matcher.group(1);
                         globalVars.add(varName);
-                        allVars.add(varName);
                     }
                 } else if (isFunction) {
                     if (line.matches("^\\w+:")) {
@@ -354,7 +439,6 @@ public class DataFlowRdef {
                                 if (type.startsWith("&")) {
                                     newState.setPointsTo(type.substring(1));
                                 }
-                                allVars.add(varName);
                                 variableStates.put(varName, newState);
                             }
                         } else if (line.contains("$addrof")) {
@@ -377,6 +461,7 @@ public class DataFlowRdef {
                                 varState.setPointsTo(addressTakenVar);
                                 if (variableStates.containsKey(addressTakenVar)) {
                                     String type = variableStates.get(addressTakenVar).getType();
+                                    allAddressTakenVars.add(addressTakenVar);
                                     addressTakenVariables.computeIfAbsent(type, k -> new HashSet<>()).add(addressTakenVar);
                                 }
                             }
@@ -389,6 +474,14 @@ public class DataFlowRdef {
                                 if (variableStates.containsKey(part)) {
                                     VariableState thisVar = variableStates.get(part);
                                     varsInBlock.add(part);
+                                }
+                            }
+                            if(line.contains("alloc")){
+                                if(variableStates.get(parts[3]) == null) {
+                                    VariableState fakeState = new VariableState();
+                                    fakeState.setType("int");
+                                    fakeHeapStates.put("fake_" + fakeState.getType(), fakeState);
+                                    variableStates.get(parts[0]).setPointsTo("fake_" + fakeState.getType());
                                 }
                             }
                             if (currentBlock != null) {
@@ -439,6 +532,12 @@ public class DataFlowRdef {
         for (Map.Entry<ProgramPoint.Instruction, Set<ProgramPoint.Instruction>> entry : reachingDefinitions.entrySet()) {
             ProgramPoint.Instruction instruction = entry.getKey();
             Set<ProgramPoint.Instruction> definitions = entry.getValue();
+
+            // Skip this entry if definitions set is empty
+            if (definitions.isEmpty()) {
+                continue; // Move to the next entry in the loop without printing
+            }
+
             StringBuilder result = new StringBuilder(instruction.toString() + " -> {");
 
             List<String> defsStrings = definitions.stream()

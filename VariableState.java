@@ -16,32 +16,20 @@ class VariableState{
         }
     }
 
-    void markAsBottom() {
-        if(this.pointsTo == null){
-            this.isTop = false;
-        }
-    }
 
     public void setPointsTo(String pointsTo) {
         this.pointsTo = pointsTo;
         isTop = false;
     }
 
-
-    public boolean isTop() {
-        return isTop;
-    }
-
     public String getType() {
         return this.type;
     }
 
-    public boolean isBottom(){
-        if(this.isTop) return false;
-        if(definitionPoints.size() == 0){
-            return true;
-        }
-        return false;
+    public void setDefinitionPoint(ProgramPoint.Instruction instruction) {
+        Set<ProgramPoint.Instruction> newlist = new HashSet<>();
+        newlist.add(instruction);
+        this.definitionPoints = newlist;
     }
 
     public void addDefinitionPoint(ProgramPoint.Instruction instruction) {
@@ -76,6 +64,16 @@ class VariableState{
         newState.definitionPoints = new HashSet<>(this.definitionPoints);
         return newState;
     }
+
+    public VariableState copyNew(VariableState def) {
+        VariableState newState = new VariableState();
+        newState.definitionPoints = def.definitionPoints;
+        newState.isTop = this.isTop;
+        newState.pointsTo = this.pointsTo;
+        newState.type = this.type;
+        return newState;
+    }
+
 
     @Override
     public boolean equals(Object obj) {

@@ -36,8 +36,12 @@ public class ProgramPoint {
             }
 
             if (other instanceof NonTermInstruction) {
+                if(this.index > 10){
+                    String a = "";
+                }
                 NonTermInstruction nonTermOther = (NonTermInstruction) other;
-                return Integer.compare(this.index, nonTermOther.index);
+                Integer res = Integer.compare(this.index, nonTermOther.index);
+                return res;
             }
             return 0;
         }

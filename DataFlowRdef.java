@@ -1,3 +1,5 @@
+import com.sun.source.tree.Tree;
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -11,13 +13,10 @@ public class DataFlowRdef {
 //    Make addr_taken a map like Map<Type, Set<VarId>>.
     static Map<String, Set<String>> addressTakenVariables = new TreeMap<>();
 
-    static Map<String, List<String>> typeDefinitions = new HashMap<>();
     static Set<String> allAddressTakenVars = new HashSet<>();
 
     static Set<String> globalVars = new HashSet<>();
     static Set<String> localParams = new HashSet<>();
-
-    static Map<String, List<ProgramPoint.Instruction>> basicBlocksInstructions = new HashMap<>();
 
     static Map<String, List<String>> blockSuccessors = new HashMap<>();
 
@@ -33,17 +32,46 @@ public class DataFlowRdef {
 //    static TreeMap<String, TreeMap<String, VariableState>> postStates = new TreeMap<>();
 
     static Queue<String> worklist = new PriorityQueue<>();
-    static Map<String, Set<String>> reachableTypesMap = new HashMap<>();
+    static Map<String, Set<String>> reachableTypesMap = new TreeMap<>();
     // Soln for all instructions
-    static Map<String, Set<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
+    static Map<String, List<ProgramPoint.Instruction>> basicBlocksInstructions = new HashMap<>();
+//    static Map<String, TreeSet<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
+    static Map<String, TreeSet<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>(new Comparator<String>() {
+        @Override
+        public int compare(String o1, String o2) {
+            // Split keys into blockName and Index parts
+            String[] parts1 = o1.split("\\.");
+            String[] parts2 = o2.split("\\.");
+
+            String blockName1 = parts1[0];
+            String blockName2 = parts2[0];
+
+            int blockNameCompare = blockName1.compareTo(blockName2);
+            if (blockNameCompare != 0) {
+                return blockNameCompare;
+            }
+
+            boolean isTerm1 = parts1[1].equalsIgnoreCase("term");
+            boolean isTerm2 = parts2[1].equalsIgnoreCase("term");
+
+            if (isTerm1 && isTerm2) {
+                return 0;
+            } else if (isTerm1) {
+                return 1;
+            } else if (isTerm2) {
+                return -1;
+            }
+
+            int index1 = Integer.parseInt(parts1[1]);
+            int index2 = Integer.parseInt(parts2[1]);
+
+            return Integer.compare(index1, index2);
+        }
+    });
 
     public static void reachingDefinitionAnalysis(String filePath, String functionName) {
         parseLirFile(filePath, functionName);
-        for (String type : typeDefinitions.keySet()) {
-            Set<String> reachableTypes = calculateReachableTypes(type);
-            reachableTypesMap.put(type, reachableTypes);
-        }
-
+        calculateReachableTypes();
         for (String blockName : blockVars.keySet()) {
             TreeMap<String, VariableState> initialStates = new TreeMap<>();
             preStates.put(blockName, initialStates);
@@ -130,35 +158,78 @@ public class DataFlowRdef {
         return result;
     }
 
+    static void calculateReachableTypes() {
+        boolean updated;
+        do {
+            updated = false;
+            TreeMap<String, Set<String>> expandedMap = new TreeMap<>();
+
+            for (Map.Entry<String, Set<String>> entry : reachableTypesMap.entrySet()) {
+                String type = entry.getKey();
+                Set<String> directReachableTypes = new HashSet<>(entry.getValue());
+
+                for (String subtype : new HashSet<>(entry.getValue())) {
+                    Set<String> indirectReachableTypes = reachableTypesMap.get(subtype);
+                    if (indirectReachableTypes != null && !indirectReachableTypes.isEmpty()) {
+                        boolean changed = directReachableTypes.addAll(indirectReachableTypes.stream().filter(s -> !s.equals(type)).collect(Collectors.toSet()));
+                        if (changed) {
+                            updated = true;
+                        }
+                    }
+                }
+                expandedMap.put(type, directReachableTypes);
+            }
+
+            reachableTypesMap = expandedMap;
+        } while (updated);
+    }
+
     private static void initializeVarsDefinitions(){
         TreeMap<String, VariableState> entryStates = preStates.get("entry");
         //alloc fake heap vars
         for (Map.Entry<String, VariableState> entry : fakeHeapStates.entrySet()) {
             String fakeVarName = entry.getKey();
             String type = entry.getValue().getType();
-            Set<String> reachableTypes = calculateReachableTypes(fakeVarName);
             entryStates.put(fakeVarName, entry.getValue());
             allAddressTakenVars.add(fakeVarName);
             addressTakenVariables.computeIfAbsent(type, k -> new HashSet<>()).add(fakeVarName);
         }
     }
-
-    static Set<String> calculateReachableTypes(String type) {
-        Set<String> reachableTypes = new HashSet<>();
-        if (!type.contains("->")) {
-            reachableTypes.add(type);
+    static void ReachableTypes(String type) {
+        if (reachableTypesMap.containsKey(type)) {
+            return;
         }
 
-        if (typeDefinitions.containsKey(type)) {
-            for (String fieldType : typeDefinitions.get(type)) {
-                reachableTypes.addAll(calculateReachableTypes(fieldType));
+        reachableTypesMap.putIfAbsent(type, new HashSet<>());
+
+        // Base case: Simple types
+        if (!type.contains("->") && !type.contains("(") && !type.startsWith("&")) {
+            return;
+        }
+        if (type.contains("->")) {
+            String[] parts = type.split("\\s*->\\s*");
+            for (String part : parts) {
+                if (part.contains("(")) {
+                    String parameters = part.substring(part.indexOf("(") + 1, part.lastIndexOf(")"));
+                    for (String parameter : parameters.split("\\s*,\\s*")) {
+                        ReachableTypes(parameter);
+                        reachableTypesMap.get(type).add(parameter);
+                        reachableTypesMap.get(type).addAll(reachableTypesMap.getOrDefault(parameter, new HashSet<>()));
+                    }
+                } else {
+                    ReachableTypes(part);
+                    reachableTypesMap.get(type).addAll(reachableTypesMap.getOrDefault(part, new HashSet<>()));
+                }
             }
-        } else if (type.startsWith("&")) {
-            String pointedType = type.substring(1);
-            reachableTypes.addAll(calculateReachableTypes(pointedType));
+            return;
         }
-
-        return reachableTypes;
+        // Handling pointers
+        if (type.startsWith("&")) {
+            String pointedType = type.substring(1);
+            ReachableTypes(pointedType);
+            reachableTypesMap.get(type).add(pointedType);
+            reachableTypesMap.get(type).addAll(reachableTypesMap.getOrDefault(pointedType, new HashSet<>())); // Add all reachable types from the pointed type
+        }
     }
 
 
@@ -407,15 +478,18 @@ public class DataFlowRdef {
                     // WDEF =[{addr_taken[τ]|τ ∈ ReachViaArgs ∪ ReachViaGlobals} ∪ Globals.
                     if(fnVarTypes.size() != 0) {
                         Set<String> typeSet2 = new HashSet<>();
-                        for (String type2 : fnVarTypes.keySet()) {
+                        for (String type2 : fnVarTypes.get(varFnName2)) {
                             if(reachableTypesMap.get(type2)!=null) {
                                 typeSet2.addAll(reachableTypesMap.get(type2));
                             }
                         }
                         for (String type : typeSet2) {
-                            for (String addTaken : addressTakenVariables.get(type)) {
-                                if (postState.containsKey(addTaken)) {
-                                    postState.get(addTaken).addDefinitionPoint(input);
+                            if(addressTakenVariables.get(type) != null) {
+                                for (String addTaken : addressTakenVariables.get(type)) {
+                                    if (postState.containsKey(addTaken)) {
+                                        reachingDefinitions.get(input.toString()).addAll(postState.get(addTaken).getDefinitionPoints());
+                                        postState.get(addTaken).addDefinitionPoint(input);
+                                    }
                                 }
                             }
                         }
@@ -538,7 +612,7 @@ public class DataFlowRdef {
             boolean isMainFunction = false;
             boolean isOtherFunction = false;
             boolean isStruct = false;
-            String structName = "";
+            String structName = null;
             int index = 0;
 
             String line;
@@ -625,20 +699,25 @@ public class DataFlowRdef {
                     if (matcher.find()) {
                         structName = matcher.group(1);
                     }
+                    reachableTypesMap.putIfAbsent(structName, new HashSet<>());
                 } else if(isStruct && line.startsWith("}")) {
                     isStruct = false;
+                    structName = null;
                 } else if(isStruct){
-                    Pattern fieldPattern = Pattern.compile("\\s*(\\w+):\\s*(.+);");
+                    Pattern fieldPattern = Pattern.compile("\\s*(\\w+):\\s*(.+)");
                     Matcher fieldMatcher = fieldPattern.matcher(line);
                     if (fieldMatcher.find()) {
-                        String fieldName = fieldMatcher.group(1);
-                        String fieldType = fieldMatcher.group(2);
+                        String varType = fieldMatcher.group(2);
+                        reachableTypesMap.computeIfAbsent(structName, k->new HashSet<>()).add(varType);
+                        ReachableTypes(varType);
                     }
                 }else if (!isMainFunction && !isOtherFunction && !isStruct && line.matches("^\\w+:.*$")) {
-                    Pattern pattern = Pattern.compile("^(\\w+):.*$");
+                    Pattern pattern = Pattern.compile("^(\\w+):\\s*(.+)");
                     Matcher matcher = pattern.matcher(line);
                     if (matcher.find()) {
                         String varName = matcher.group(1);
+                        String varType = matcher.group(2);
+                        ReachableTypes(varType);
                         globalVars.add(varName);
 //                        VariableState fakeState = new VariableState();
 //                        fakeState.setType("int");
@@ -674,16 +753,18 @@ public class DataFlowRdef {
                                 String type = parts[1].trim();
                                 VariableState newState = new VariableState();
                                 newState.setType(type);
+                                reachableTypesMap.computeIfAbsent(type, k -> new HashSet<>());
                                 if (type.startsWith("&")) {
                                     newState.setPointsTo(type.substring(1));
                                 }
+                                ReachableTypes(type);
                                 variableStates.put(varName, newState);
                             }
                         } else if (line.contains("$addrof")) {
                             ProgramPoint.NonTermInstruction instruction = new ProgramPoint.NonTermInstruction(currentBlock, index, line);
                             index++;
                             basicBlocksInstructions.get(currentBlock).add(instruction);
-                            reachingDefinitions.put(instruction.toString(), new HashSet<>());
+                            reachingDefinitions.put(instruction.toString(), new TreeSet<>());
                             String[] parts = line.split(" ");
                             Set<String> varsInBlock = blockVars.get(currentBlock);
                             for (int i = 0; i < parts.length; i++) {
@@ -719,6 +800,8 @@ public class DataFlowRdef {
                                     VariableState fakeState = new VariableState();
                                     fakeState.setType("int");
                                     fakeHeapStates.put("fake_" + fakeState.getType(), fakeState);
+                                    reachableTypesMap.computeIfAbsent(fakeState.getType(), k -> new HashSet<>());
+                                    ReachableTypes(fakeState.getType());
                                     variableStates.get(parts[0]).setPointsTo("fake_" + fakeState.getType());
                                 }
                             }
@@ -742,7 +825,7 @@ public class DataFlowRdef {
                                     index++;
                                 }
                                 basicBlocksInstructions.get(currentBlock).add(instruction);
-                                reachingDefinitions.put(instruction.toString(), new HashSet<>());
+                                reachingDefinitions.put(instruction.toString(), new TreeSet<>());
                             } else {
 
                             }
@@ -766,9 +849,9 @@ public class DataFlowRdef {
 
     private static void printAnalysisResults() {
         // Sort the basic block names alphabetically
-        for (Map.Entry<String, Set<ProgramPoint.Instruction>> entry : reachingDefinitions.entrySet()) {
+        for (Map.Entry<String, TreeSet<ProgramPoint.Instruction>> entry : reachingDefinitions.entrySet()) {
             String instruction = entry.getKey();
-            Set<ProgramPoint.Instruction> definitions = entry.getValue();
+            TreeSet<ProgramPoint.Instruction> definitions = entry.getValue();
 
             // Skip this entry if definitions set is empty
             if (definitions.isEmpty()) {
@@ -779,7 +862,6 @@ public class DataFlowRdef {
 
             List<String> defsStrings = definitions.stream()
                     .map(Object::toString)
-                    .sorted()
                     .collect(Collectors.toList());
 
             result.append(String.join(", ", defsStrings));

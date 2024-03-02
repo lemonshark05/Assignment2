@@ -19,7 +19,7 @@ for file in "$TEST_DIR"/*.lir; do
     diff_output="$output_dir/diff.txt"
 
     ./run-rdef.sh "$file" "$json_file" "main"> "$output_stats"
-    diff -wp "$output_stats" "$stats_file" > "$diff_output"
+    diff -wpB "$output_stats" "$stats_file" > "$diff_output"
 
     if [ -s "$diff_output" ]; then
         echo "Processed $file - NOT PASS >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"

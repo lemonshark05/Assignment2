@@ -264,15 +264,41 @@ public class DataFlowRdef {
 //                    handleArith(parts, leftVar, postState);
                     break;
                 case "gep":
+                    String gepVar1 = parts[3];
+                    String gepVar2 = parts[4];
+                    VariableState gepState1 = postState.get(gepVar1);
+                    VariableState gepState2 = postState.get(gepVar2);
+                    //soln[pp] ← soln[pp] ∪ σ[v]
+                    if (gepState1 != null) {
+                        reachingDefinitions.get(input.toString()).addAll(gepState1.getDefinitionPoints());
+                    }
+                    if (gepState2 != null) {
+                        reachingDefinitions.get(input.toString()).addAll(gepState2.getDefinitionPoints());
+                    }
                     if(defState != null) {
                         reachingDefinitions.get(input.toString()).addAll(defState.getDefinitionPoints());
                     }
+                    //σ[x] ← {pp}
+                    defState.setDefinitionPoint(input);
                     break;
                 case "gfp":
                 //∀v∈USE,soln[pp]←soln[pp]∪σ[v] • σ[x] ← {pp}
+                    String gfpVar1 = parts[3];
+                    String gfpVar2 = parts[4];
+                    VariableState gfpState1 = postState.get(gfpVar1);
+                    VariableState gfpState2 = postState.get(gfpVar2);
+                    //soln[pp] ← soln[pp] ∪ σ[v]
+                    if (gfpState1 != null) {
+                        reachingDefinitions.get(input.toString()).addAll(gfpState1.getDefinitionPoints());
+                    }
+                    if (gfpState2 != null) {
+                        reachingDefinitions.get(input.toString()).addAll(gfpState2.getDefinitionPoints());
+                    }
                     if(defState != null) {
                         reachingDefinitions.get(input.toString()).addAll(defState.getDefinitionPoints());
                     }
+                    //σ[x] ← {pp}
+                    defState.setDefinitionPoint(input);
                     break;
                 case "copy":
                     if (parts.length > 3) {
@@ -350,6 +376,34 @@ public class DataFlowRdef {
                 case "call_dir":
 //                    ∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
                     String varFnName2 = null;
+                    if(instruction.contains("(") && instruction.contains(")")){
+                        Pattern patternFn = Pattern.compile("(\\w+)\\((.*?)\\)");
+                        Matcher matcherFn = patternFn.matcher(instruction);
+
+                        if (matcherFn.find()) {
+                            varFnName2 = matcherFn.group(1); // Function name
+                            String functionArgs = matcherFn.group(2); // All arguments
+
+                            VariableState fnState = postState.get(varFnName2);
+                            if(fnState != null) {
+                                reachingDefinitions.get(input.toString()).addAll(fnState.getDefinitionPoints());
+                                fnState.addDefinitionPoint(input);
+                            }
+
+                            if (!functionArgs.isEmpty()) {
+                                String[] args = functionArgs.split("\\s*,\\s*");
+                                for(String arg : args){
+                                    VariableState argState = postState.get(arg);
+                                    if(argState!=null) {
+                                        reachingDefinitions.get(input.toString()).addAll(argState.getDefinitionPoints());
+                                        if(fnState != null) {
+                                            argState.addDefinitionPoint(input);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // WDEF =[{addr_taken[τ]|τ ∈ ReachViaArgs ∪ ReachViaGlobals} ∪ Globals.
                     if(fnVarTypes.size() != 0) {
                         Set<String> typeSet2 = new HashSet<>();

@@ -125,7 +125,6 @@ public class DataFlowControl {
                             if (type.startsWith("&")) {
                                 newState.setPointsTo(type.substring(1));
                             }
-                            newState.markAsTop();
                             localIntParams.add(varName);
                             allVars.add(varName);
                             variableStates.put(varName, newState);

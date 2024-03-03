@@ -796,13 +796,28 @@ public class DataFlowRdef {
                                 }
                             }
                             if(line.contains("alloc")){
-                                if(variableStates.get(parts[3]) == null) {
+                                VariableState allocState = variableStates.get(parts[3]);
+                                if(allocState == null) {
                                     VariableState fakeState = new VariableState();
                                     fakeState.setType("int");
                                     fakeHeapStates.put("fake_" + fakeState.getType(), fakeState);
                                     reachableTypesMap.computeIfAbsent(fakeState.getType(), k -> new HashSet<>());
                                     ReachableTypes(fakeState.getType());
                                     variableStates.get(parts[0]).setPointsTo("fake_" + fakeState.getType());
+                                }
+                            }
+                            if(line.contains("store")){
+                                VariableState fakeState = variableStates.get(parts[2]);
+                                if(fakeState == null) {
+                                    fakeState = new VariableState();
+                                    fakeState.setType("int");
+                                    fakeHeapStates.put("fake_" + fakeState.getType(), fakeState);
+                                    reachableTypesMap.computeIfAbsent(fakeState.getType(), k -> new HashSet<>());
+                                    ReachableTypes(fakeState.getType());
+                                }else{
+                                    fakeHeapStates.put("fake_" + fakeState.getType(), fakeState);
+                                    reachableTypesMap.computeIfAbsent(fakeState.getType(), k -> new HashSet<>());
+                                    ReachableTypes(fakeState.getType());
                                 }
                             }
                             if (currentBlock != null) {

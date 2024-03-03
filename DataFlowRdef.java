@@ -1,5 +1,3 @@
-import com.sun.source.tree.Tree;
-
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -28,14 +26,16 @@ public class DataFlowRdef {
     static Map<String, Set<String>> fnVarTypes = new TreeMap<>();
     static Set<String> processedBlocks = new HashSet<>();
 
-    static TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
-//    static TreeMap<String, TreeMap<String, VariableState>> postStates = new TreeMap<>();
+//    static TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
+//    static TreeMap<String, TreeMapreStates.put(successor, joinedState);p<String, VariableState>> postStates = new TreeMap<>();
 
     static Queue<String> worklist = new PriorityQueue<>();
     static Map<String, Set<String>> reachableTypesMap = new TreeMap<>();
     // Soln for all instructions
     static Map<String, List<ProgramPoint.Instruction>> basicBlocksInstructions = new HashMap<>();
 //    static Map<String, TreeSet<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
+    static Map<ProgramPoint.Instruction, VariableState> instructionSolutionInfo = new HashMap<>();
+
     static Map<String, TreeSet<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>(new Comparator<String>() {
         @Override
         public int compare(String o1, String o2) {
@@ -70,6 +70,7 @@ public class DataFlowRdef {
     });
 
     public static void reachingDefinitionAnalysis(String filePath, String functionName) {
+        TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
         parseLirFile(filePath, functionName);
         calculateReachableTypes();
         for (String blockName : blockVars.keySet()) {
@@ -99,7 +100,7 @@ public class DataFlowRdef {
         }
 
         //Initial State ⊥ for all program points
-        initializeVarsDefinitions();
+        initializeVarsDefinitions(preStates);
         //Fake Heap Variables
         //Add fake heap variables to addressTakenVariables based on the analysis of pointer types (PTRSτ)
 
@@ -108,18 +109,18 @@ public class DataFlowRdef {
 
         while (!worklist.isEmpty()) {
             String block = worklist.poll();
-            if(block.equals("bb4")||block.equals("bb7")){
-                String a = "";
-            }
             TreeMap<String, VariableState> currentState = preStates.get(block);
-            currentState = analyzeBlock(block, currentState, processedBlocks);
+            TreeMap<String, VariableState> initialStates = new TreeMap<>();
+            for (Map.Entry<String, VariableState> entry : currentState.entrySet()) {
+                String varName = entry.getKey();
+                VariableState newState = currentState.get(varName).clone();
+                initialStates.put(varName, newState);
+            }
+            initialStates = analyzeBlock(block, initialStates);
 
             for (String successor : blockSuccessors.getOrDefault(block, new LinkedList<>())) {
-                if(successor.equals("bb4")||successor.equals("bb7")){
-                    String a = "";
-                }
                 TreeMap<String, VariableState> successorPreState = preStates.get(successor);
-                TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, currentState);
+                TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, initialStates);
                 if (!joinedState.equals(successorPreState) || currentState.isEmpty()) {
                     preStates.put(successor, joinedState);
                     if (!worklist.contains(successor)) {
@@ -127,25 +128,27 @@ public class DataFlowRdef {
                         worklist.add(successor);
 //                        System.out.println("Add to Worklist: " + worklist.toString());
                     }
-                }
-                if (!processedBlocks.contains(successor)) {
-                    processedBlocks.add(successor);
-                    worklist.add(successor);
+                    if (!processedBlocks.contains(successor)) {
+                        processedBlocks.add(successor);
+                        worklist.add(successor);
+                    }
                 }
             }
         }
         printAnalysisResults();
     }
 
-    private static TreeMap<String, VariableState> analyzeBlock(String block, TreeMap<String, VariableState> preState, Set<String> processedBlocks) {
+    private static TreeMap<String, VariableState> analyzeBlock(String block, TreeMap<String, VariableState> preState) {
         for (ProgramPoint.Instruction operation : basicBlocksInstructions.get(block)) {
-            analyzeInstruction(preState, processedBlocks ,operation);
+            analyzeInstruction(preState ,operation);
         }
         return preState;
     }
 
     private static TreeMap<String, VariableState> joinMaps(TreeMap<String, VariableState> map1, TreeMap<String, VariableState> map2) {
-        TreeMap<String, VariableState> result = new TreeMap<>(map1);
+        TreeMap<String, VariableState> safeMap1 = (map1 != null) ? new TreeMap<>(map1) : new TreeMap<>();
+
+        TreeMap<String, VariableState> result = new TreeMap<>(safeMap1);
 
         for (Map.Entry<String, VariableState> entry : map2.entrySet()) {
             String varName = entry.getKey();
@@ -190,7 +193,7 @@ public class DataFlowRdef {
         } while (updated);
     }
 
-    private static void initializeVarsDefinitions(){
+    private static void initializeVarsDefinitions(TreeMap<String, TreeMap<String, VariableState>> preStates){
         TreeMap<String, VariableState> entryStates = preStates.get("entry");
         //alloc fake heap vars
         for (Map.Entry<String, VariableState> entry : fakeHeapStates.entrySet()) {
@@ -242,7 +245,7 @@ public class DataFlowRdef {
     }
 
 
-    private static void analyzeInstruction(TreeMap<String, VariableState> postState, Set<String> processedBlocks, ProgramPoint.Instruction input) {
+    private static void analyzeInstruction(TreeMap<String, VariableState> postState, ProgramPoint.Instruction input) {
         String instruction = input.getInstructure();
         Pattern operationPattern = Pattern.compile("\\$(store|load|alloc|cmp|gep|copy|call_ext|addrof|arith|gfp|ret|call_dir|call_idr|jump|branch)");
         Matcher matcher = operationPattern.matcher(instruction);
@@ -351,9 +354,6 @@ public class DataFlowRdef {
                     if (gepState2 != null) {
                         reachingDefinitions.get(input.toString()).addAll(gepState2.getDefinitionPoints());
                     }
-                    if(defState != null) {
-                        reachingDefinitions.get(input.toString()).addAll(defState.getDefinitionPoints());
-                    }
                     //σ[x] ← {pp}
                     defState.setDefinitionPoint(input);
                     break;
@@ -369,9 +369,6 @@ public class DataFlowRdef {
                     }
                     if (gfpState2 != null) {
                         reachingDefinitions.get(input.toString()).addAll(gfpState2.getDefinitionPoints());
-                    }
-                    if(defState != null) {
-                        reachingDefinitions.get(input.toString()).addAll(defState.getDefinitionPoints());
                     }
                     //σ[x] ← {pp}
                     defState.setDefinitionPoint(input);
@@ -618,7 +615,7 @@ public class DataFlowRdef {
                 if(line.length() == 0) continue;
                 if (line.startsWith("fn "+functionName)) {
                     isMainFunction = true;
-                    if(line.contains(":") && line.contains("(")) {
+                    if(line.contains("->") && line.contains("(")) {
                         String paramSubstring = line.substring(line.indexOf('(') + 1, line.indexOf(')'));
                         StringBuilder transformedPart = new StringBuilder();
                         int parenthesisLevel = 0;
@@ -632,19 +629,24 @@ public class DataFlowRdef {
                             }
                             transformedPart.append(c);
                         }
-                        String[] variables = paramSubstring.split(",\\s*");
-                        for (String varDeclaration : variables) {
-                            String[] parts = varDeclaration.split(":");
-                            String varName = parts[0].trim();
-                            // just get int type
-                            String type = parts[1].trim();
-                            VariableState newState = new VariableState();
-                            newState.setType(type);
-                            if (type.startsWith("&")) {
-                                newState.setPointsTo(type.substring(1));
+                        fnVarTypes.putIfAbsent(functionName, new HashSet<>());
+                        if(paramSubstring.length()>0) {
+                            String[] variables = paramSubstring.split(",\\s*");
+                            for (String varDeclaration : variables) {
+                                String[] parts = varDeclaration.split(":");
+                                String varName = parts[0].trim();
+                                // just get int type
+                                String type = parts[1].trim();
+                                VariableState newState = new VariableState();
+                                fnVarTypes.computeIfAbsent(functionName, k -> new HashSet<>()).add(type);
+                                newState.setType(type);
+                                fakeHeapStates.putIfAbsent("fake_" + newState.getType(), newState);
+                                if (type.startsWith("&")) {
+                                    newState.setPointsTo(type.substring(1));
+                                }
+                                localParams.add(varName);
+                                variableStates.put(varName, newState);
                             }
-                            localParams.add(varName);
-                            variableStates.put(varName, newState);
                         }
                     }
                 } else if (line.startsWith("fn ") && !line.contains(functionName)) {
@@ -655,7 +657,7 @@ public class DataFlowRdef {
                     if (matcher.find()) {
                         fnName = matcher.group(1);
                     }
-                    if(line.contains(":") && line.contains("(")) {
+                    if(line.contains("->") && line.contains("(")) {
                         String paramSubstring = line.substring(line.indexOf('(') + 1, line.indexOf(')'));
                         StringBuilder transformedPart = new StringBuilder();
                         int parenthesisLevel = 0;
@@ -669,15 +671,18 @@ public class DataFlowRdef {
                             }
                             transformedPart.append(c);
                         }
+
                         fnVarTypes.putIfAbsent(fnName, new HashSet<>());
-                        String[] variables = paramSubstring.split(",\\s*");
-                        for (String varDeclaration : variables) {
-                            String[] parts = varDeclaration.split(":");
-                            String type = parts[1].trim();
-                            fnVarTypes.computeIfAbsent(fnName, k -> new HashSet<>()).add(type);
-                            VariableState fakeState = new VariableState();
-                            fakeState.setType(type);
-                            fakeHeapStates.putIfAbsent("fake_" + fakeState.getType(), fakeState);
+                        if(paramSubstring.length()>0) {
+                            String[] variables = paramSubstring.split(",\\s*");
+                            for (String varDeclaration : variables) {
+                                String[] parts = varDeclaration.split(":");
+                                String type = parts[1].trim();
+                                fnVarTypes.computeIfAbsent(fnName, k -> new HashSet<>()).add(type);
+                                VariableState fakeState = new VariableState();
+                                fakeState.setType(type);
+                                fakeHeapStates.putIfAbsent("fake_" + fakeState.getType(), fakeState);
+                            }
                         }
                     }
                 }else if (isOtherFunction && line.startsWith("}")) {

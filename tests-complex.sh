@@ -14,7 +14,7 @@ for file in "$TEST_DIR"/*.lir; do
 
     json_file="$output_dir/${filename}.lir.json"
     #    stats_file="${file%.lir}.dominance.soln"
-    stats_file="${file%.lir}.redf.soln"
+    stats_file="${file%.lir}.rdef.soln"
     output_stats="$output_dir/my-$filename"
     diff_output="$output_dir/diff.txt"
 

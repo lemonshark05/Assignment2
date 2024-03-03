@@ -10,7 +10,7 @@ LIR_FILE="$1"
 JSON_FILE="$2"
 FUNCTION_NAME="$3"
 
-javac DataFlowRdef.java State.java VariableState.java
+javac DataFlowRdef.java State.java ProgramPoint.java VariableState.java
 java DataFlowRdef "$LIR_FILE" "$JSON_FILE" "$FUNCTION_NAME"
 
 #if [ -f "$LIR_FILE" ]; then

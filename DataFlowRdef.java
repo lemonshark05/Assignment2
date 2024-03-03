@@ -108,10 +108,16 @@ public class DataFlowRdef {
 
         while (!worklist.isEmpty()) {
             String block = worklist.poll();
+            if(block.equals("bb4")||block.equals("bb7")){
+                String a = "";
+            }
             TreeMap<String, VariableState> currentState = preStates.get(block);
             currentState = analyzeBlock(block, currentState, processedBlocks);
 
             for (String successor : blockSuccessors.getOrDefault(block, new LinkedList<>())) {
+                if(successor.equals("bb4")||successor.equals("bb7")){
+                    String a = "";
+                }
                 TreeMap<String, VariableState> successorPreState = preStates.get(successor);
                 TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, currentState);
                 if (!joinedState.equals(successorPreState) || currentState.isEmpty()) {
@@ -196,6 +202,9 @@ public class DataFlowRdef {
         }
     }
     static void ReachableTypes(String type) {
+        if(type.equals("&int")){
+            String a = "";
+        }
         if (reachableTypesMap.containsKey(type)) {
             return;
         }
@@ -290,10 +299,6 @@ public class DataFlowRdef {
                 case "alloc":
                     String usedVar0 = parts[3];
                     VariableState usedState0 = postState.get(usedVar0);
-                    if(usedState0 == null) {
-                        usedVar0 = "fake_int";
-                        usedState0 = postState.get(usedVar0);
-                    }
 
                     //soln[pp] ← soln[pp] ∪ σ[v]
                     if (usedState0 != null) {
@@ -596,15 +601,6 @@ public class DataFlowRdef {
         }
     }
 
-    private static String getAddressTaken(VariableState pointerState, TreeMap<String, VariableState> postState){
-        VariableState result = pointerState.clone();
-        String re = "";
-        while(result.pointsTo!=null){
-            re = result.pointsTo;
-            result = postState.get(result.pointsTo);
-        }
-        return re;
-    }
 
     private static void parseLirFile(String filePath, String functionName) {
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
@@ -679,11 +675,9 @@ public class DataFlowRdef {
                             String[] parts = varDeclaration.split(":");
                             String type = parts[1].trim();
                             fnVarTypes.computeIfAbsent(fnName, k -> new HashSet<>()).add(type);
-                            if(type.contains("&")){
-                                VariableState fakeState = new VariableState();
-                                fakeState.setType(type);
-                                fakeHeapStates.putIfAbsent("fake_" + fakeState.getType(), fakeState);
-                            }
+                            VariableState fakeState = new VariableState();
+                            fakeState.setType(type);
+                            fakeHeapStates.putIfAbsent("fake_" + fakeState.getType(), fakeState);
                         }
                     }
                 }else if (isOtherFunction && line.startsWith("}")) {
@@ -753,7 +747,7 @@ public class DataFlowRdef {
                                 String type = parts[1].trim();
                                 VariableState newState = new VariableState();
                                 newState.setType(type);
-                                reachableTypesMap.computeIfAbsent(type, k -> new HashSet<>());
+                                ReachableTypes(type);
                                 if (type.startsWith("&")) {
                                     newState.setPointsTo(type.substring(1));
                                 }

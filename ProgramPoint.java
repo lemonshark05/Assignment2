@@ -36,9 +36,6 @@ public class ProgramPoint {
             }
 
             if (other instanceof NonTermInstruction) {
-                if(this.index > 10){
-                    String a = "";
-                }
                 NonTermInstruction nonTermOther = (NonTermInstruction) other;
                 Integer res = Integer.compare(this.index, nonTermOther.index);
                 return res;
@@ -114,13 +111,13 @@ public class ProgramPoint {
 
         @Override
         public int compareTo(Instruction other) {
+            int bbCompare = this.getBb().compareTo(other.getBb());
+            if (bbCompare != 0) {
+                return bbCompare;
+            }
+
             if (other instanceof NonTermInstruction) {
                 return 1;
-            } else if (other instanceof Terminal) {
-                int bbCompare = this.getBb().compareTo(other.getBb());
-                if (bbCompare != 0) {
-                    return bbCompare;
-                }
             }
 
             return 0;

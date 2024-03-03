@@ -9,5 +9,5 @@ LIR_FILE="$1"
 JSON_FILE="$2"
 FUNCTION_NAME="$3"
 
-javac DataFlowControl.java State.java VariableState.java
+javac DataFlowControl.java State.java ProgramPoint.java VariableState.java
 java DataFlowControl "$LIR_FILE" "$JSON_FILE" "$FUNCTION_NAME"

@@ -399,21 +399,12 @@ public class DataFlowRdef {
                             varFnName1 = matcherFn.group(1); // Function name
                             String functionArgs = matcherFn.group(2); // All arguments
 
-                            VariableState fnState = postState.get(varFnName1);
-                            if(fnState != null) {
-                                reachingDefinitions.get(input.toString()).addAll(fnState.getDefinitionPoints());
-                                fnState.addDefinitionPoint(input);
-                            }
-
                             if (!functionArgs.isEmpty()) {
                                 String[] args = functionArgs.split("\\s*,\\s*");
                                 for(String arg : args){
                                     VariableState argState = postState.get(arg);
                                     if(argState!=null) {
                                         reachingDefinitions.get(input.toString()).addAll(argState.getDefinitionPoints());
-                                        if(fnState != null) {
-                                            argState.addDefinitionPoint(input);
-                                        }
                                     }
                                 }
                             }
@@ -436,7 +427,7 @@ public class DataFlowRdef {
                         }
                     }
                     for(String globalVar : globalVars){
-                        if (postState.containsKey(globalVar) && !globalVar.equals(varFnName1)) {
+                        if (postState.containsKey(globalVar)) {
                             VariableState globalState = postState.get(globalVar);
                             reachingDefinitions.get(input.toString()).addAll(globalState.getDefinitionPoints());
                             globalState.addDefinitionPoint(input);
@@ -447,6 +438,7 @@ public class DataFlowRdef {
                     }
                     break;
                 case "call_dir":
+//                    WDEF =[{addr_taken[τ]|τ ∈ ReachViaArgs ∪ ReachViaGlobals}∪Globals.
 //                    ∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
                     String varFnName2 = null;
                     if(instruction.contains("(") && instruction.contains(")")){
@@ -457,21 +449,12 @@ public class DataFlowRdef {
                             varFnName2 = matcherFn.group(1); // Function name
                             String functionArgs = matcherFn.group(2); // All arguments
 
-                            VariableState fnState = postState.get(varFnName2);
-                            if(fnState != null) {
-                                reachingDefinitions.get(input.toString()).addAll(fnState.getDefinitionPoints());
-                                fnState.addDefinitionPoint(input);
-                            }
-
                             if (!functionArgs.isEmpty()) {
                                 String[] args = functionArgs.split("\\s*,\\s*");
                                 for(String arg : args){
                                     VariableState argState = postState.get(arg);
                                     if(argState!=null) {
                                         reachingDefinitions.get(input.toString()).addAll(argState.getDefinitionPoints());
-                                        if(fnState != null) {
-                                            argState.addDefinitionPoint(input);
-                                        }
                                     }
                                 }
                             }
@@ -497,7 +480,7 @@ public class DataFlowRdef {
                         }
                     }
                     for(String globalVar : globalVars){
-                        if (postState.containsKey(globalVar) && !globalVar.equals(varFnName2)) {
+                        if (postState.containsKey(globalVar)) {
                             VariableState globalState = postState.get(globalVar);
                             reachingDefinitions.get(input.toString()).addAll(globalState.getDefinitionPoints());
                             globalState.addDefinitionPoint(input);
@@ -530,7 +513,6 @@ public class DataFlowRdef {
                                     VariableState argState = postState.get(arg);
                                     if(argState!=null) {
                                         reachingDefinitions.get(input.toString()).addAll(argState.getDefinitionPoints());
-                                        argState.addDefinitionPoint(input);
                                     }
                                 }
                             }

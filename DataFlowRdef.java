@@ -27,9 +27,6 @@ public class DataFlowRdef {
     static Map<String, Set<String>> fnVarTypes = new TreeMap<>();
     static Set<String> processedBlocks = new HashSet<>();
 
-//    static TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
-//    static TreeMap<String, TreeMapreStates.put(successor, joinedState);p<String, VariableState>> postStates = new TreeMap<>();
-
     static Queue<String> worklist = new PriorityQueue<>();
     static Map<String, Set<String>> reachableTypesMap = new TreeMap<>();
     // Soln for all instructions
@@ -74,10 +71,6 @@ public class DataFlowRdef {
         TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
         parseLirFile(filePath, functionName);
         calculateReachableTypes();
-        for (String blockName : blockVars.keySet()) {
-            TreeMap<String, VariableState> initialStates = new TreeMap<>();
-            preStates.put(blockName, initialStates);
-        }
 
         for (String blockName : blockVars.keySet()) {
             TreeMap<String, VariableState> initialStates = new TreeMap<>();
@@ -90,6 +83,10 @@ public class DataFlowRdef {
             for(String globalVar : globalVars){
                 VariableState newState = new VariableState();
                 initialStates.put(globalVar, newState);
+            }
+            for(String addName: allAddressTakenVars){
+                VariableState newState = variableStates.get(addName).clone();
+                initialStates.putIfAbsent(addName, newState);
             }
             preStates.put(blockName, initialStates);
         }
@@ -223,8 +220,8 @@ public class DataFlowRdef {
         }
     }
     static void ReachableTypes(String type) {
-        if(type.equals("&int")){
-            String a = "";
+        if(type.length() == 0){
+            return;
         }
         if (reachableTypesMap.containsKey(type)) {
             return;
@@ -279,6 +276,9 @@ public class DataFlowRdef {
                 case "store":
                     String useVar = parts[1];
                     String valueVar = parts[2];
+                    if(useVar.equals("_t56")){
+                        String a = "";
+                    }
                     String typeOfvalueVar = "int";
                     if(postState.get(valueVar) != null){
                         typeOfvalueVar = postState.get(valueVar).getType();
@@ -647,7 +647,7 @@ public class DataFlowRdef {
                                 VariableState newState = new VariableState();
                                 fnVarTypes.computeIfAbsent(functionName, k -> new HashSet<>()).add(type);
                                 newState.setType(type);
-                                fakeHeapStates.putIfAbsent("fake_" + newState.getType(), newState);
+                                fakeHeapStates.putIfAbsent("fake_" + type, newState);
                                 if (type.startsWith("&")) {
                                     newState.setPointsTo(type.substring(1));
                                     PTRS.add(type);
@@ -690,7 +690,7 @@ public class DataFlowRdef {
                                 VariableState fakeState = new VariableState();
                                 fakeState.setType(type);
                                 PTRS.add(type);
-                                fakeHeapStates.putIfAbsent("fake_" + fakeState.getType(), fakeState);
+                                fakeHeapStates.putIfAbsent("fake_" + type, fakeState);
                             }
                         }
                     }

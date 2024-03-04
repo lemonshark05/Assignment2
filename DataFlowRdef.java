@@ -14,7 +14,7 @@ public class DataFlowRdef {
     static Set<String> allAddressTakenVars = new HashSet<>();
 //    all pointer-typed globals, parameters, and locals of the function being ana- lyzed,
     static Set<String> PTRS = new HashSet<>();
-    static Set<String> globalVars = new HashSet<>();
+    static Map<String, String> globalVars = new HashMap<>();
     static Set<String> localParams = new HashSet<>();
 
     static Map<String, List<String>> blockSuccessors = new HashMap<>();
@@ -24,15 +24,14 @@ public class DataFlowRdef {
 
     static Map<String, VariableState> fakeHeapStates = new TreeMap<>();
 
-    static Map<String, Set<String>> fnVarTypes = new TreeMap<>();
+    static Map<String, Set<String>> fnParamsTypes = new TreeMap<>();
+    //Map save varName to type
+    static Map<String, String> fnVarsMap = new TreeMap<>();
     static Set<String> processedBlocks = new HashSet<>();
 
     static Queue<String> worklist = new PriorityQueue<>();
     static Map<String, Set<String>> reachableTypesMap = new TreeMap<>();
-    // Soln for all instructions
     static Map<String, List<ProgramPoint.Instruction>> basicBlocksInstructions = new HashMap<>();
-//    static Map<String, TreeSet<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>();
-    static Map<ProgramPoint.Instruction, VariableState> instructionSolutionInfo = new HashMap<>();
 
     static Map<String, TreeSet<ProgramPoint.Instruction>> reachingDefinitions = new TreeMap<>(new Comparator<String>() {
         @Override
@@ -80,8 +79,9 @@ public class DataFlowRdef {
                 initialStates.put(varName, newState);
             }
 
-            for(String globalVar : globalVars){
+            for(String globalVar : globalVars.keySet()){
                 VariableState newState = new VariableState();
+                newState.setType(globalVars.get(globalVar));
                 initialStates.put(globalVar, newState);
             }
 
@@ -277,7 +277,7 @@ public class DataFlowRdef {
                 case "store":
                     String useVar = parts[1];
                     String valueVar = parts[2];
-                    if(useVar.equals("id1")){
+                    if(useVar.equals("_t41")){
                         String a = "";
                     }
                     String typeOfvalueVar = "int";
@@ -439,9 +439,9 @@ public class DataFlowRdef {
                         }
                     }
                     // WDEF =[{addr_taken[τ]|τ ∈ ReachViaArgs ∪ ReachViaGlobals} ∪ Globals.
-                    if(fnVarTypes.size() != 0) {
+                    if(fnParamsTypes.size() != 0) {
                         Set<String> typeSet3 = new HashSet<>();
-                        for (String type3 : fnVarTypes.keySet()) {
+                        for (String type3 : fnParamsTypes.keySet()) {
                             if(reachableTypesMap.get(type3) != null) {
                                 typeSet3.addAll(reachableTypesMap.get(type3));
                             }
@@ -454,7 +454,7 @@ public class DataFlowRdef {
                             }
                         }
                     }
-                    for(String globalVar : globalVars){
+                    for(String globalVar : globalVars.keySet()){
                         if (postState.containsKey(globalVar)) {
                             VariableState globalState = postState.get(globalVar);
                             reachingDefinitions.get(input.toString()).addAll(globalState.getDefinitionPoints());
@@ -489,9 +489,9 @@ public class DataFlowRdef {
                         }
                     }
                     // WDEF =[{addr_taken[τ]|τ ∈ ReachViaArgs ∪ ReachViaGlobals} ∪ Globals.
-                    if(fnVarTypes.size() != 0) {
+                    if(fnParamsTypes.size() != 0) {
                         Set<String> typeSet2 = new HashSet<>();
-                        for (String type2 : fnVarTypes.get(varFnName2)) {
+                        for (String type2 : fnParamsTypes.get(varFnName2)) {
                             if(reachableTypesMap.get(type2)!=null) {
                                 typeSet2.addAll(reachableTypesMap.get(type2));
                             }
@@ -507,7 +507,7 @@ public class DataFlowRdef {
                             }
                         }
                     }
-                    for(String globalVar : globalVars){
+                    for(String globalVar : globalVars.keySet()){
                         if (postState.containsKey(globalVar)) {
                             VariableState globalState = postState.get(globalVar);
                             reachingDefinitions.get(input.toString()).addAll(globalState.getDefinitionPoints());
@@ -547,9 +547,9 @@ public class DataFlowRdef {
                         }
                     }
                     // WDEF =[{addr_taken[τ]|τ ∈ ReachViaArgs ∪ ReachViaGlobals} ∪ Globals.
-                    if(fnVarTypes.size() != 0) {
+                    if(fnParamsTypes.size() != 0) {
                         Set<String> typeSet3 = new HashSet<>();
-                        for (String type3 : fnVarTypes.keySet()) {
+                        for (String type3 : fnParamsTypes.keySet()) {
                             if(reachableTypesMap.get(type3)!=null) {
                                 typeSet3.addAll(reachableTypesMap.get(type3));
                             }
@@ -562,7 +562,7 @@ public class DataFlowRdef {
                             }
                         }
                     }
-                    for(String globalVar : globalVars){
+                    for(String globalVar : globalVars.keySet()){
                         if (postState.containsKey(globalVar) && !globalVar.equals(varFnName3)) {
                             VariableState globalState = postState.get(globalVar);
                             reachingDefinitions.get(input.toString()).addAll(globalState.getDefinitionPoints());
@@ -640,16 +640,16 @@ public class DataFlowRdef {
                             }
                             transformedPart.append(c);
                         }
-                        fnVarTypes.putIfAbsent(functionName, new HashSet<>());
+                        fnParamsTypes.putIfAbsent(functionName, new HashSet<>());
                         if(paramSubstring.length()>0) {
                             String[] variables = paramSubstring.split(",\\s*");
                             for (String varDeclaration : variables) {
                                 String[] parts = varDeclaration.split(":");
                                 String varName = parts[0].trim();
                                 // just get int type
-                                String type = parts[1].trim();
+                                String type = parts[1].replace("|", ",").trim();
                                 VariableState newState = new VariableState();
-                                fnVarTypes.computeIfAbsent(functionName, k -> new HashSet<>()).add(type);
+                                fnParamsTypes.computeIfAbsent(functionName, k -> new HashSet<>()).add(type);
                                 newState.setType(type);
                                 fakeHeapStates.putIfAbsent("fake_" + type, newState);
                                 if (type.startsWith("&")) {
@@ -684,13 +684,13 @@ public class DataFlowRdef {
                             transformedPart.append(c);
                         }
 
-                        fnVarTypes.putIfAbsent(fnName, new HashSet<>());
+                        fnParamsTypes.putIfAbsent(fnName, new HashSet<>());
                         if(paramSubstring.length()>0) {
                             String[] variables = paramSubstring.split(",\\s*");
                             for (String varDeclaration : variables) {
                                 String[] parts = varDeclaration.split(":");
-                                String type = parts[1].trim();
-                                fnVarTypes.computeIfAbsent(fnName, k -> new HashSet<>()).add(type);
+                                String type = parts[1].replace("|", ",").trim();
+                                fnParamsTypes.computeIfAbsent(fnName, k -> new HashSet<>()).add(type);
                                 VariableState fakeState = new VariableState();
                                 fakeState.setType(type);
                                 PTRS.add(type);
@@ -701,6 +701,42 @@ public class DataFlowRdef {
                 }else if (isOtherFunction && line.startsWith("}")) {
                     isOtherFunction = false;
                     currentBlock = null;
+                }else if(isOtherFunction){
+                    if (line.startsWith("let ")) {
+                        String variablesPart = line.substring("let ".length());
+                        StringBuilder transformedPart = new StringBuilder();
+                        int parenthesisLevel = 0;
+                        for (char c : variablesPart.toCharArray()) {
+                            if (c == '(') {
+                                parenthesisLevel++;
+                            } else if (c == ')') {
+                                parenthesisLevel--;
+                            } else if (c == ',' && parenthesisLevel > 0) {
+                                c = '|';
+                            }
+                            transformedPart.append(c);
+                        }
+                        String[] variables = transformedPart.toString().split(",\\s*");
+                        for (String varDeclaration : variables) {
+                            String[] parts = varDeclaration.split(":");
+                            String varName = parts[0].trim();
+                            String type = parts[1].replace("|", ",").trim();
+                            fnVarsMap.put(varName, type);
+                        }
+                    } else if (line.contains("$addrof")) {
+                        String[] parts = line.split(" ");
+                        if (parts.length > 3) {
+                            String address = parts[0];
+                            String addressTakenVar = parts[3];
+                            VariableState varState = variableStates.get(address);
+                            varState.setPointsTo(addressTakenVar);
+                            if (fnVarsMap.containsKey(addressTakenVar)) {
+                                String type = fnVarsMap.get(addressTakenVar);
+                                allAddressTakenVars.add(addressTakenVar);
+                                addressTakenVariables.computeIfAbsent(type, k -> new HashSet<>()).add(addressTakenVar);
+                            }
+                        }
+                    }
                 } else if (isMainFunction && line.startsWith("}")) {
                     isMainFunction = false;
                     currentBlock = null;
@@ -731,7 +767,10 @@ public class DataFlowRdef {
                         String varType = matcher.group(2);
                         ReachableTypes(varType);
                         addressTakenVariables.computeIfAbsent(varType, k -> new HashSet<>()).add(varName);
-                        globalVars.add(varName);
+                        globalVars.putIfAbsent(varName, varType);
+                        VariableState globalState = new VariableState();
+                        globalState.setType(varType);
+                        variableStates.put(varName, globalState);
                         if(varType.contains("&")){
                             PTRS.add(varType);
                         }
@@ -763,7 +802,7 @@ public class DataFlowRdef {
                                 String[] parts = varDeclaration.split(":");
                                 String varName = parts[0].trim();
                                 // just get int type
-                                String type = parts[1].trim();
+                                String type = parts[1].replace("|", ",").trim();
                                 VariableState newState = new VariableState();
                                 newState.setType(type);
                                 ReachableTypes(type);
@@ -808,7 +847,7 @@ public class DataFlowRdef {
                                     varsInBlock.add(part);
                                 }
                             }
-                            if(line.contains("alloc")){
+                            if(line.contains("$alloc")){
                                 VariableState allocState = variableStates.get(parts[3]);
                                 if(allocState == null) {
                                     VariableState fakeState = new VariableState();

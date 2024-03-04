@@ -1,0 +1,199 @@
+struct st {
+  f1:int
+  f2:&int
+}
+
+g1:int
+g2:&int
+g3:&st
+test:&() -> int
+
+fn main() -> int {
+entry:
+  $ret 0
+}
+
+fn test() -> int {
+let _lo1:int, _lo2:int, _lo3:int, _lo4:int, _t10:&&st, _t11:&st, _t12:&&int, _t13:&int, _t14:int, _t15:&&&&&int, _t16:&&&&int, _t17:&&&int, _t18:&&int, _t19:&int, _t20:&&int, _t21:&int, _t22:int, _t23:&&&&int, _t24:&&&int, _t25:&int, _t26:int, _t27:&&&int, _t28:&&int, _t29:&&int, _t30:&int, _t31:&int, _t32:int, _t33:int, _t34:int, _t35:&int, _t36:&int, _t37:&&int, _t38:&int, _t39:&&st, _t40:&st, _t41:&int, _t42:int, _t43:int, _t44:&int, _t45:int, _t46:&int, _t47:&int, _t48:&int, _t49:int, _t5:&st, _t50:int, _t51:int, _t52:&&int, _t53:&int, _t54:int, _t55:int, _t56:int, _t57:int, _t58:int, _t59:int, _t6:&&st, _t60:&&st, _t61:&st, _t62:&int, _t63:int, _t64:int, _t65:int, _t66:&int, _t67:&int, _t68:&int, _t69:int, _t7:int, _t70:&int, _t71:&&int, _t72:&int, _t73:&&int, _t74:&int, _t75:&&st, _t76:int, _t77:int, _t78:&int, _t79:&int, _t8:&&int, _t80:int, _t81:int, _t82:&int, _t83:int, _t84:int, _t85:int, _t86:&&int, _t87:&int, _t88:&int, _t89:int, _t9:&int, _t90:int, id0:&&st, id1:&st, id10:&&st, id11:&&int, id12:&st, id13:&int, id14:int, id15:int, id16:int, id17:&int, id18:&int, id19:&int, id2:&st, id3:&st, id4:int, id5:&&&int, id6:&&&int, id7:&&&&int, id8:&&&&&int, id9:&&int
+bb1:
+  _t78 = $gfp id1 f1
+  _t79 = $gfp g3 f1
+  _t80 = $load _t79
+  $store _t78 _t80
+  _t81 = $arith sub 0 6
+  g1 = $copy _t81
+  _t82 = $gfp id3 f1
+  _t83 = $arith sub 0 3
+  $store _t82 _t83
+  _t84 = $arith mul 9 6
+  $branch _t84 bb16 bb17
+
+bb10:
+  _t58 = $arith sub 0 6
+  _t59 = $cmp neq _lo2 _t58
+  id14 = $copy _t59
+  _t60 = $gep id0 8
+  _t61 = $load _t60
+  _t62 = $gfp _t61 f1
+  _t63 = $load _t62
+  _lo3 = $copy _t63
+  _t64 = $cmp eq _lo3 0
+  $branch _t64 bb14 bb13
+
+bb11:
+  _lo2 = $copy 0
+  $jump bb10
+
+bb12:
+  _lo2 = $copy 1
+  $jump bb10
+
+bb13:
+  _t66 = $gfp id2 f1
+  $store _t66 _lo3
+  _t67 = $gfp id3 f1
+  _t68 = $addrof id15
+  _t69 = $cmp eq _t68 id17
+  $store _t67 _t69
+  _t70 = $gfp id3 f1
+  $store _t70 id14
+  _t71 = $gfp g3 f2
+  _t72 = $load _t71
+  id18 = $copy _t72
+  $jump bb4
+
+bb14:
+  _t65 = $load id13
+  _lo3 = $copy _t65
+  $jump bb13
+
+bb15:
+  _t85 = $arith sub 0 1
+  _t86 = $gfp id12 f2
+  _t87 = $load _t86
+  _t88 = $gep _t87 _lo4
+  _t89 = $load _t88
+  _t90 = $cmp eq _t85 _t89
+  $ret _t90
+
+bb16:
+  _lo4 = $copy 0
+  $jump bb15
+
+bb17:
+  _lo4 = $copy 1
+  $jump bb15
+
+bb2:
+  _t43 = $arith sub 0 3
+  id4 = $copy _t43
+  _t44 = $gfp id1 f1
+  _t45 = $load _t44
+  $branch _t45 bb5 bb6
+
+bb3:
+  id14 = $copy id16
+  $store id17 id16
+  _t77 = $cmp neq id19 id13
+  g1 = $copy _t77
+  $jump bb1
+
+bb4:
+  id19 = $alloc 1 [_alloc1]
+  _t73 = $gfp id12 f2
+  _t74 = $load _t73
+  g2 = $copy _t74
+  _t75 = $addrof id1
+  _t76 = $cmp neq id0 _t75
+  id15 = $copy _t76
+  $jump bb1
+
+bb5:
+  _t47 = $load id9
+  _t48 = $addrof g1
+  _t49 = $cmp neq _t47 _t48
+  _t46 = $gep g2 _t49
+  $store _t46 4
+  $jump bb4
+
+bb6:
+  $store id13 8
+  _t50 = $arith sub 0 5
+  _t51 = $arith add _t50 id15
+  $branch _t51 bb8 bb9
+
+bb7:
+  _t52 = $gfp g3 f2
+  _t53 = $load _t52
+  _t54 = $arith sub 0 _lo1
+  _t55 = $cmp gte 10 _t54
+  $store _t53 _t55
+  _t56 = $arith sub 0 3
+  _t57 = $arith sub 0 _t56
+  $branch _t57 bb11 bb12
+
+bb8:
+  _lo1 = $copy 0
+  $jump bb7
+
+bb9:
+  _lo1 = $copy 1
+  $jump bb7
+
+entry:
+  _t5 = $load id0
+  id3 = $copy _t5
+  id2 = $copy id3
+  id1 = $copy id2
+  _t6 = $addrof id1
+  id0 = $copy _t6
+  id10 = $copy id0
+  _t7 = $arith sub 0 3
+  _t8 = $gep id9 _t7
+  _t9 = $load _t8
+  _t10 = $gep id10 7
+  _t11 = $load _t10
+  _t12 = $gfp _t11 f2
+  _t13 = $load _t12
+  _t14 = $cmp eq _t9 _t13
+  _t15 = $gep id8 _t14
+  _t16 = $load _t15
+  id7 = $copy _t16
+  id11 = $copy id11
+  _t17 = $addrof id11
+  _t18 = $load _t17
+  _t19 = $load _t18
+  _t20 = $gep id11 id4
+  _t21 = $load _t20
+  _t22 = $cmp eq _t19 _t21
+  _t23 = $gep id7 _t22
+  _t24 = $load _t23
+  id6 = $copy _t24
+  id5 = $copy id6
+  _t25 = $gfp id12 f1
+  _t26 = $load _t25
+  _t27 = $gep id5 _t26
+  _t28 = $load _t27
+  _t29 = $gep _t28 6
+  _t30 = $load _t29
+  _t31 = $load id11
+  _t32 = $cmp neq _t30 _t31
+  id4 = $copy _t32
+  id15 = $copy id16
+  _t33 = $arith add id15 id4
+  _t34 = $arith mul _t33 3
+  id14 = $copy _t34
+  _t35 = $addrof id14
+  id13 = $copy _t35
+  _t36 = $addrof id15
+  id17 = $copy _t36
+  _t37 = $gep id11 0
+  _t38 = $load _t37
+  id18 = $copy _t38
+  _t39 = $gep id0 6
+  _t40 = $load _t39
+  _t41 = $gfp _t40 f1
+  $store _t41 g1
+  _t42 = $arith div g1 g1
+  $branch _t42 bb2 bb3
+}

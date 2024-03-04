@@ -84,6 +84,7 @@ public class DataFlowRdef {
                 VariableState newState = new VariableState();
                 initialStates.put(globalVar, newState);
             }
+
             for(String addName: allAddressTakenVars){
                 VariableState newState = variableStates.get(addName).clone();
                 initialStates.putIfAbsent(addName, newState);
@@ -107,7 +108,7 @@ public class DataFlowRdef {
 
         while (!worklist.isEmpty()) {
             String block = worklist.poll();
-            if(block.equals("bb9")){
+            if(block.equals("bb7")){
                 String a = "";
             }
             TreeMap<String, VariableState> currentState = preStates.get(block);
@@ -276,7 +277,7 @@ public class DataFlowRdef {
                 case "store":
                     String useVar = parts[1];
                     String valueVar = parts[2];
-                    if(useVar.equals("_t56")){
+                    if(useVar.equals("id1")){
                         String a = "";
                     }
                     String typeOfvalueVar = "int";
@@ -401,6 +402,9 @@ public class DataFlowRdef {
                     if (parts.length > 3) {
                         String usedVar = parts[3];
                         VariableState usedState = postState.get(usedVar);
+                        if(usedVar.equals("g1")){
+                            String a ="";
+                        }
                         if(usedState != null) {
                             //soln[pp] ← soln[pp] ∪ σ[v]
                             Set<ProgramPoint.Instruction> set = reachingDefinitions.get(input.toString());
@@ -726,6 +730,7 @@ public class DataFlowRdef {
                         String varName = matcher.group(1);
                         String varType = matcher.group(2);
                         ReachableTypes(varType);
+                        addressTakenVariables.computeIfAbsent(varType, k -> new HashSet<>()).add(varName);
                         globalVars.add(varName);
                         if(varType.contains("&")){
                             PTRS.add(varType);

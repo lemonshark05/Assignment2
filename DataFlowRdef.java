@@ -121,17 +121,17 @@ public class DataFlowRdef {
             for (String successor : blockSuccessors.getOrDefault(block, new LinkedList<>())) {
                 TreeMap<String, VariableState> successorPreState = preStates.get(successor);
                 TreeMap<String, VariableState> joinedState = joinMaps(successorPreState, initialStates);
-                if (!joinedState.equals(successorPreState) || currentState.isEmpty()) {
+                if (!joinedState.equals(successorPreState) || initialStates.isEmpty()) {
                     preStates.put(successor, joinedState);
                     if (!worklist.contains(successor)) {
                         processedBlocks.add(successor);
                         worklist.add(successor);
 //                        System.out.println("Add to Worklist: " + worklist.toString());
                     }
-                    if (!processedBlocks.contains(successor)) {
-                        processedBlocks.add(successor);
-                        worklist.add(successor);
-                    }
+                }
+                if (!processedBlocks.contains(successor)) {
+                    processedBlocks.add(successor);
+                    worklist.add(successor);
                 }
             }
         }
@@ -273,7 +273,7 @@ public class DataFlowRdef {
                     }
 
                     //  ∀x∈DEF,σ[x] ← σ[x] ∪ {pp}
-                    if(addressTakenVariables.get(typeOfvalueVar) != null) {
+                    if(typeOfvalueVar!=null && addressTakenVariables.get(typeOfvalueVar) != null) {
                         for (String addTaken : addressTakenVariables.get(typeOfvalueVar)) {
                             if (postState.containsKey(addTaken)) {
                                 postState.get(addTaken).addDefinitionPoint(input);
@@ -291,7 +291,10 @@ public class DataFlowRdef {
                     //∀v∈USE,soln[pp] ← soln[pp] ∪ σ[v]
                     if(defState.getType() != null && addressTakenVariables.get(defState.getType()) != null) {
                         for (String addTaken : addressTakenVariables.get(defState.getType())) {
-                            reachingDefinitions.get(input.toString()).addAll(postState.get(addTaken).getDefinitionPoints());
+                            VariableState takenState = postState.get(addTaken);
+                            if (takenState != null) {
+                                reachingDefinitions.get(input.toString()).addAll(takenState.getDefinitionPoints());
+                            }
                         }
                     }
                     // σ[x] ← {pp}
@@ -547,8 +550,7 @@ public class DataFlowRdef {
                     break;
                 case "addrof":
                     if (parts.length > 2) {
-                        Set<ProgramPoint.Instruction> set3 = reachingDefinitions.get(input.toString());
-                        set3.addAll(defState.definitionPoints);
+                        //USE is null
                         defState.setDefinitionPoint(input);
                     }
                     break;
@@ -814,7 +816,7 @@ public class DataFlowRdef {
                                     instruction = new ProgramPoint.Terminal(currentBlock, line);
                                     String targetBlock = line.substring(line.lastIndexOf("then") + 5).trim();
                                     blockSuccessors.computeIfAbsent(currentBlock, k -> new ArrayList<>()).add(targetBlock);
-                                } else if (line.contains("ret")) {
+                                } else if (line.startsWith("$ret")) {
                                     instruction = new ProgramPoint.Terminal(currentBlock, line);
                                 } else {
                                     instruction = new ProgramPoint.NonTermInstruction(currentBlock, index, line);

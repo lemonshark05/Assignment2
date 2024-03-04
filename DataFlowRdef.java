@@ -12,7 +12,8 @@ public class DataFlowRdef {
     static Map<String, Set<String>> addressTakenVariables = new TreeMap<>();
 
     static Set<String> allAddressTakenVars = new HashSet<>();
-
+//    all pointer-typed globals, parameters, and locals of the function being ana- lyzed,
+    static Set<String> PTRS = new HashSet<>();
     static Set<String> globalVars = new HashSet<>();
     static Set<String> localParams = new HashSet<>();
 
@@ -109,6 +110,9 @@ public class DataFlowRdef {
 
         while (!worklist.isEmpty()) {
             String block = worklist.poll();
+            if(block.equals("bb9")){
+                String a = "";
+            }
             TreeMap<String, VariableState> currentState = preStates.get(block);
             TreeMap<String, VariableState> initialStates = new TreeMap<>();
             for (Map.Entry<String, VariableState> entry : currentState.entrySet()) {
@@ -168,6 +172,12 @@ public class DataFlowRdef {
     }
 
     static void calculateReachableTypes() {
+        for(String ptype: PTRS){
+            VariableState newState = new VariableState();
+            newState.setType(ptype);
+            ReachableTypes(ptype);
+            fakeHeapStates.putIfAbsent("fake_" + ptype, newState);
+        }
         boolean updated;
         do {
             updated = false;
@@ -195,6 +205,14 @@ public class DataFlowRdef {
 
     private static void initializeVarsDefinitions(TreeMap<String, TreeMap<String, VariableState>> preStates){
         TreeMap<String, VariableState> entryStates = preStates.get("entry");
+        for(String ptype: PTRS){
+            //For each type τ ∈ ReachableTypes(PTRS τ ), create a fake variable
+            for(String subtype: reachableTypesMap.get(ptype)){
+                VariableState newState = new VariableState();
+                newState.setType(subtype);
+                fakeHeapStates.putIfAbsent("fake_" + subtype, newState);
+            }
+        }
         //alloc fake heap vars
         for (Map.Entry<String, VariableState> entry : fakeHeapStates.entrySet()) {
             String fakeVarName = entry.getKey();
@@ -251,6 +269,9 @@ public class DataFlowRdef {
         Matcher matcher = operationPattern.matcher(instruction);
         String[] parts = instruction.split(" ");
         String defVar = parts[0];
+        if(defVar.equals("_t20")|| defVar.equals("_t19")){
+            String a = "";
+        }
         VariableState defState = postState.get(defVar);
         if (matcher.find()) {
             String opera = matcher.group(1);
@@ -595,7 +616,9 @@ public class DataFlowRdef {
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
-
+                if(line.contains("_t19")||line.contains("_t20")){
+                    String a = "";
+                }
                 if(line.length() == 0) continue;
                 if (line.startsWith("fn "+functionName)) {
                     isMainFunction = true;
@@ -627,6 +650,7 @@ public class DataFlowRdef {
                                 fakeHeapStates.putIfAbsent("fake_" + newState.getType(), newState);
                                 if (type.startsWith("&")) {
                                     newState.setPointsTo(type.substring(1));
+                                    PTRS.add(type);
                                 }
                                 localParams.add(varName);
                                 variableStates.put(varName, newState);
@@ -665,6 +689,7 @@ public class DataFlowRdef {
                                 fnVarTypes.computeIfAbsent(fnName, k -> new HashSet<>()).add(type);
                                 VariableState fakeState = new VariableState();
                                 fakeState.setType(type);
+                                PTRS.add(type);
                                 fakeHeapStates.putIfAbsent("fake_" + fakeState.getType(), fakeState);
                             }
                         }
@@ -702,9 +727,9 @@ public class DataFlowRdef {
                         String varType = matcher.group(2);
                         ReachableTypes(varType);
                         globalVars.add(varName);
-//                        VariableState fakeState = new VariableState();
-//                        fakeState.setType("int");
-//                        fakeHeapStates.putIfAbsent("fake_" + fakeState.getType(), fakeState);
+                        if(varType.contains("&")){
+                            PTRS.add(varType);
+                        }
                     }
                 } else if (isMainFunction) {
                     if (line.matches("^\\w+:")) {
@@ -738,9 +763,9 @@ public class DataFlowRdef {
                                 newState.setType(type);
                                 ReachableTypes(type);
                                 if (type.startsWith("&")) {
+                                    PTRS.add(type);
                                     newState.setPointsTo(type.substring(1));
                                 }
-                                ReachableTypes(type);
                                 variableStates.put(varName, newState);
                             }
                         } else if (line.contains("$addrof")) {

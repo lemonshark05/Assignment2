@@ -17,76 +17,96 @@ public class DataFlowControl {
         }
     }
 
-    static Set<String> addressTakenVariables = new HashSet<>();
-    static Map<String, VariableState> addressTakenVarInit = new TreeMap<>();
-    static Set<String> allVars = new HashSet<>();
-
-    static Set<String> globalIntVars = new HashSet<>();
-    static Set<String> localIntParams = new HashSet<>();
-
-    static TreeMap<String, List<Operation>> basicBlocks = new TreeMap<>();
+    static TreeSet<String> basicBlocks = new TreeSet<>();
     static TreeMap<String, List<String>> blockSuccessors = new TreeMap<>();
-
-    static TreeMap<String, Set<String>> dominators = new TreeMap<>();
-    static TreeMap<String, Set<String>> dominanceFrontiers = new TreeMap<>();
-
-    static Map<String, TreeMap<String, String>> blockVars = new HashMap<>();
-    static Map<String, VariableState> variableStates = new TreeMap<>();
-    static Set<String> processedBlocks = new HashSet<>();
-
-    static Queue<String> worklist = new PriorityQueue<>();
-
-    static TreeMap<String, TreeMap<String, VariableState>> preStates = new TreeMap<>();
-    static TreeMap<String, TreeMap<String, VariableState>> postStates = new TreeMap<>();
+    static TreeMap<String, TreeSet<String>> predecessors = new TreeMap<>();
+    static TreeMap<String, TreeSet<String>> dominators = new TreeMap<>();
+    static TreeMap<String, TreeSet<String>> postDominators = new TreeMap<>();
+    static TreeMap<String, List<String>> reverseSuccessors = new TreeMap<>();
+    static TreeMap<String, TreeSet<String>> dominanceFrontiers = new TreeMap<>();
 
 
     public static void controlDominanceAnalysis(String filePath, String functionName) {
-        parseLirFile(filePath, functionName);
+        Queue<String> worklist = new PriorityQueue<>();
 
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            for (Map.Entry<String, List<Operation>> entry : basicBlocks.entrySet()) {
-                String block = entry.getKey();
-                Set<String> newDominators = new HashSet<>(basicBlocks.keySet());
-                for (String pred : getPredecessors(block)) {
-                    newDominators.retainAll(dominators.get(pred));
-                }
-                newDominators.add(block); // A block always dominates itself
-                if (!newDominators.equals(dominators.get(block))) {
-                    dominators.put(block, newDominators);
-                    changed = true;
+        parseLirFile(filePath, functionName);
+        predecessors.put("entry", new TreeSet<>());
+        String postEntry = "entry";
+        for (String block : basicBlocks) {
+            if (blockSuccessors.get(block) != null) {
+                for (String target : blockSuccessors.get(block)) {
+                    predecessors.computeIfAbsent(target, k -> new TreeSet<>()).add(block);
                 }
             }
         }
+        //Compute dominators
+        computeDominators();
+//        for (String block : basicBlocks) {
+//            System.out.println(block + ", Dominators: " + dominators.get(block));
+//        }
+//        for (String block : basicBlocks) {
+//            System.out.println(block + ", Dominators: " + dominators.get(block));
+//        }
+        for (String block : basicBlocks) {
+            if(!block.equals("entry") && dominators.get(block).size() == 1 ){
+                postEntry = block;
+            }
+            dominanceFrontiers.put(block, new TreeSet<>());
+        }
 
-        // Compute dominance frontiers
-        for (Map.Entry<String, List<Operation>> entry : basicBlocks.entrySet()) {
-            String block = entry.getKey();
-            Set<String> frontier = new HashSet<>();
-            for (String succ : blockSuccessors.getOrDefault(block, new ArrayList<>())) {
-                for (String pred : getPredecessors(succ)) {
-                    if (!dominators.get(succ).contains(pred)) {
-                        frontier.add(succ);
-                        break;
-                    }
+        for (String curBlock : basicBlocks) {
+            TreeSet<String> bbDoms = dominators.get(curBlock); // Get the dominators of the block
+            TreeSet<String> strictBbDoms = new TreeSet<>(bbDoms);
+            strictBbDoms.remove(curBlock); // Remove the block itself to make it 'strict'
+
+            // Iterate over each predecessor of the current block
+            for (String pred : predecessors.getOrDefault(curBlock, new TreeSet<>())) {
+                // Get the dominators of the predecessor
+                TreeSet<String> predDoms = dominators.get(pred);
+
+                TreeSet<String> relevantPredDoms = new TreeSet<>(predDoms);
+                relevantPredDoms.removeAll(strictBbDoms);
+
+                for (String predDom : relevantPredDoms) {
+                    dominanceFrontiers.computeIfAbsent(predDom, k -> new TreeSet<>()).add(curBlock);
                 }
             }
-            dominanceFrontiers.put(block, frontier);
         }
 
         printDominanceResults();
     }
 
-    private static List<String> getPredecessors(String block) {
-        List<String> predecessors = new ArrayList<>();
-        for (Map.Entry<String, List<String>> entry : blockSuccessors.entrySet()) {
-            if (entry.getValue().contains(block)) {
-                predecessors.add(entry.getKey());
+    public static void computeDominators() {
+        for (String block : basicBlocks) {
+            dominators.put(block, basicBlocks);
+        }
+        // The entry block is only dominated by itself
+        TreeSet<String> entryDominators = new TreeSet<>();
+        entryDominators.add("entry");
+        dominators.put("entry", entryDominators);
+
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (String block : basicBlocks) {
+                if (block.equals("entry")) continue; // Skip the entry block
+
+                TreeSet<String> newDominators = new TreeSet<>(basicBlocks);
+                for (String pred : predecessors.get(block)) {
+                    TreeSet set = dominators.get(pred);
+                    newDominators.retainAll(dominators.get(pred));
+                }
+                // a block dominates itself
+                newDominators.add(block);
+
+                if (!dominators.get(block).equals(newDominators)) {
+                    dominators.put(block, newDominators);
+                    changed = true;
+                }
             }
         }
-        return predecessors;
     }
+
     private static void parseLirFile(String filePath, String functionName) {
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             String currentBlock = null;
@@ -97,24 +117,24 @@ public class DataFlowControl {
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
 
-                if(line.length() == 0) continue;
-                if (line.startsWith("fn "+functionName)) {
+                if (line.length() == 0) continue;
+                if (line.startsWith("fn " + functionName)) {
                     isFunction = true;
-                    if(line.contains(":") && line.contains("(")) {
+                    if (line.contains(":") && line.contains("(")) {
                         String paramSubstring = line.substring(line.indexOf('(') + 1, line.indexOf(')'));
                         StringBuilder transformedPart = new StringBuilder();
                         int parenthesisLevel = 0;
                         for (char c : paramSubstring.toCharArray()) {
                             if (c == '(') {
                                 parenthesisLevel++;
-                            }else if (c == ')'){
+                            } else if (c == ')') {
                                 parenthesisLevel--;
-                            } else if (c == ',' && parenthesisLevel > 0){
+                            } else if (c == ',' && parenthesisLevel > 0) {
                                 c = '|';
                             }
                             transformedPart.append(c);
                         }
-                        String[] variables = paramSubstring.toString().split(",\\s*");
+                        String[] variables = paramSubstring.split(",\\s*");
                         for (String varDeclaration : variables) {
                             String[] parts = varDeclaration.split(":");
                             String varName = parts[0].trim();
@@ -125,31 +145,21 @@ public class DataFlowControl {
                             if (type.startsWith("&")) {
                                 newState.setPointsTo(type.substring(1));
                             }
-                            localIntParams.add(varName);
-                            allVars.add(varName);
-                            variableStates.put(varName, newState);
                         }
                     }
                 } else if (isFunction && line.startsWith("}")) {
                     isFunction = false;
                     currentBlock = null;
-                } else if(line.startsWith("struct ")){
+                } else if (line.startsWith("struct ")) {
                     isStruct = true;
-                } else if(isStruct && line.startsWith("}")) {
+                } else if (isStruct && line.startsWith("}")) {
                     isStruct = false;
                 } else if (!isFunction && !isStruct && line.matches("^\\w+:int$")) {
-                    Pattern pattern = Pattern.compile("^(\\w+):int$");
-                    Matcher matcher = pattern.matcher(line);
-                    if (matcher.find()) {
-                        String varName = matcher.group(1);
-                        globalIntVars.add(varName);
-                        allVars.add(varName);
-                    }
+
                 } else if (isFunction) {
                     if (line.matches("^\\w+:")) {
                         currentBlock = line.replace(":", "");
-                        blockVars.putIfAbsent(currentBlock, new TreeMap<>());
-                        basicBlocks.putIfAbsent(currentBlock, new ArrayList<>());
+                        basicBlocks.add(currentBlock);
                     } else if (line.startsWith("let ")) {
                         String variablesPart = line.substring("let ".length());
                         StringBuilder transformedPart = new StringBuilder();
@@ -157,70 +167,32 @@ public class DataFlowControl {
                         for (char c : variablesPart.toCharArray()) {
                             if (c == '(') {
                                 parenthesisLevel++;
-                            }else if (c == ')'){
+                            } else if (c == ')') {
                                 parenthesisLevel--;
-                            } else if (c == ',' && parenthesisLevel > 0){
+                            } else if (c == ',' && parenthesisLevel > 0) {
                                 c = '|';
                             }
                             transformedPart.append(c);
                         }
                         String[] variables = transformedPart.toString().split(",\\s*");
-                        for (String varDeclaration : variables) {
-                            String[] parts = varDeclaration.split(":");
-                            String varName = parts[0].trim();
-                            // Should get all types
-                            String type = parts[1].trim();
-                            VariableState newState = new VariableState();
-                            newState.setType(type);
-                            if (type.startsWith("&")) {
-                                newState.setPointsTo(type.substring(1));
-                            }
-                            allVars.add(varName);
-                            variableStates.put(varName, newState);
-                        }
-                    } else if (line.contains("$addrof")) {
-                        Operation newOp = new Operation(currentBlock, line);
-                        basicBlocks.get(currentBlock).add(newOp);
-                        String[] parts = line.split(" ");
-                        TreeMap<String, String> varsInBlock = blockVars.get(currentBlock);
-                        for (int i = 0; i < parts.length; i++) {
-                            String part = parts[i];
-                            if (variableStates.containsKey(part)) {
-                                varsInBlock.put(part, "");
-                            }
-                        }
-                        if (parts.length > 3) {
-                            String address = parts[0];
-                            String addressTakenVar = parts[3];
-                            variableStates.get(address).setPointsTo(addressTakenVar);
-                            if(variableStates.containsKey(addressTakenVar)) {
-                                addressTakenVariables.add(addressTakenVar);
-                            }
-                        }
                     } else {
-                        TreeMap<String, String> varsInBlock = blockVars.get(currentBlock);
                         String[] parts = line.split(" ");
-                        for (int i = 0; i < parts.length; i++) {
-                            String part = parts[i];
-                            if (variableStates.containsKey(part)) {
-                                VariableState thisVar = variableStates.get(part);
-                                varsInBlock.put(part, "");
-                            }
-                        }
                         if (currentBlock != null) {
-                            Operation newOp = new Operation(currentBlock, line);
-                            basicBlocks.get(currentBlock).add(newOp);
                             if (line.startsWith("$jump")) {
                                 String targetBlock = extractTargetBlock(line);
                                 blockSuccessors.computeIfAbsent(currentBlock, k -> new ArrayList<>()).add(targetBlock);
-                            }else if (line.startsWith("$branch")) {
+                                reverseSuccessors.computeIfAbsent(targetBlock, k -> new ArrayList<>()).add(currentBlock);
+                            } else if (line.startsWith("$branch")) {
                                 blockSuccessors.computeIfAbsent(currentBlock, k -> new ArrayList<>()).add(parts[2]); // trueBlock
                                 blockSuccessors.computeIfAbsent(currentBlock, k -> new ArrayList<>()).add(parts[3]); // falseBlock
-                            }else if (line.contains("then")){
+                                reverseSuccessors.computeIfAbsent(parts[2], k -> new ArrayList<>()).add(currentBlock); // trueBlock
+                                reverseSuccessors.computeIfAbsent(parts[3], k -> new ArrayList<>()).add(currentBlock); // falseBlock
+                            } else if (line.contains("then")) {
                                 String targetBlock = line.substring(line.lastIndexOf("then") + 5).trim();
                                 blockSuccessors.computeIfAbsent(currentBlock, k -> new ArrayList<>()).add(targetBlock);
+                                reverseSuccessors.computeIfAbsent(targetBlock, k -> new ArrayList<>()).add(currentBlock);
+                            } else {
                             }
-                        }else{
                         }
                     }
                 }
@@ -241,8 +213,12 @@ public class DataFlowControl {
 
     private static void printDominanceResults() {
         // Sort the basic block names alphabetically
-        for (Map.Entry<String, Set<String>> entry : dominanceFrontiers.entrySet()) {
-            System.out.println(entry.getKey() + " -> " + entry.getValue());
+        for (Map.Entry<String, TreeSet<String>> entry : dominanceFrontiers.entrySet()) {
+            // Convert the Set to a String with square brackets
+            String formattedValue = entry.getValue().toString()
+                    .replace("[", "{")
+                    .replace("]", "}");
+            System.out.println(entry.getKey() + " -> " + formattedValue);
         }
     }
 
@@ -253,7 +229,7 @@ public class DataFlowControl {
         }
         String lirFilePath = args[0];
         String functionName = "test";
-        if(args.length > 2 && args[2].length()!=0){
+        if (args.length > 2 && args[2].length() != 0) {
             functionName = args[2];
         }
         controlDominanceAnalysis(lirFilePath, functionName);
